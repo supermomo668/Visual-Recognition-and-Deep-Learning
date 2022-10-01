@@ -23,7 +23,7 @@ from AlexNet import localizer_alexnet, localizer_alexnet_robust
 from voc_dataset import *
 from utils import *
 
-USE_WANDB = False  # use flags, wandb is not convenient for debugging
+USE_WANDB = True  # use flags, wandb is not convenient for debugging
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
                      and callable(models.__dict__[name]))
@@ -31,12 +31,21 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--arch', default='localizer_alexnet')
 parser.add_argument(
+    '-wandb',
+    '--USE-WANDB',
+    default=True,
+    type=bool,
+    metavar='N',
+    help='use wandb or not?')
+
+parser.add_argument(
     '-j',
     '--workers',
-    default=4,
+    default=2,
     type=int,
     metavar='N',
-    help='number of data loading workers (default: 4)')
+    help='number of data loading workers (default: 2)')
+
 parser.add_argument(
     '--epochs',
     default=30,
@@ -137,12 +146,12 @@ def main():
 
     # TODO (Q1.1): define loss function (criterion) and optimizer from [1]
     # also use an LR scheduler to decay LR by 10 every 30 epochs
-    criterion = iou   #nn.CrossEntropyLoss().to(device)
+    criterion = nn.BCELoss().cuda()   #nn.CrossEntropyLoss().to(device)
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
-    
+    optimizer = torch.optim.Adam(model.parameters(), args.lr,
+                                 #momentum=args.momentum,
+                                 weight_decay=args.weight_decay)
+
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
 
@@ -162,8 +171,7 @@ def main():
 
     cudnn.benchmark = True
 
-    # Data loading code
-    dataset = VOCDataset('trainval', top_n=10)
+    dataset = VOCDataset('trainval', top_n=10, image_size=512, data_dir='../data/VOCdevkit/VOC2007/')
     # TODO (Q1.1): Create Datasets and Dataloaders using VOCDataset
     # Ensure that the sizes are 512x512
     # Also ensure that data directories are correct
@@ -175,10 +183,11 @@ def main():
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=args.workers,
         pin_memory=True,
         sampler=train_sampler,
+        collate_fn=custom_collate_fn_VOC,
         drop_last=True)
 
     val_loader = torch.utils.data.DataLoader(
@@ -187,6 +196,7 @@ def main():
         shuffle=False,
         num_workers=args.workers,
         pin_memory=True,
+        collate_fn=custom_collate_fn_VOC,
         drop_last=True)
 
     if args.evaluate:
@@ -198,15 +208,13 @@ def main():
         wandb.init(project="vlr-hw1", reinit=True)
     # Ideally, use flags since wandb makes it harder to debug code.
 
-
     for epoch in range(args.start_epoch, args.epochs):
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch)
 
         # evaluate on validation set
-        if epoch % args.eval_freq == 0 or epoch == args.epochs - 1:
+        if epoch % args.eval_freq == 0:
             m1, m2 = validate(val_loader, model, criterion, epoch)
-
             score = m1 * m2
             # remember best prec@1 and save checkpoint
             is_best = score > best_prec1
@@ -237,24 +245,29 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # TODO (Q1.1): Get inputs from the data dict
         # Convert inputs to cuda if training on GPU
-        target = data['image'].to('cuda')
-
+        input_im = data['image'].to('cuda')
+        target_class = data['label']
+                            
         # TODO (Q1.1): Get output from model
-        conv_out = model(target)
+        if i==0: print("Forward pass")
+        conv_out = model(input_im)
         
         # TODO (Q1.1): Perform any necessary functions on the output
-        imoutput = F.max_pool2d(conv_out, kernel_size=(conv_out.size(2), conv_out.size(3))).squeeze()
-        imoutput = F.sigmoid(imoutput)
+        imoutput = (nn.MaxPool2d(kernel_size=(conv_out.size(2), conv_out.size(3)))(conv_out)).squeeze()
+        imoutput = torch.sigmoid(imoutput)
+         
+        if i==0: print(f"Output size:{imoutput.size()}")
+        vis_heatmap = F.interpolate(conv_out, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
+        if i==0: print(f"Heatmap output size:{vis_heatmap.shape}")
         
-
         # TODO (Q1.1): Compute loss using ``criterion``
-        loss = criterion(imoutput, target_var)
+        loss = criterion(imoutput.to('cpu'), target_class)
         #criterion(data['gt_boxes'], imoutput)
         
         # measure metrics and record loss
-        m1 = metric1(imoutput.data, target)
-        m2 = metric2(imoutput.data, target)
-        losses.update(loss.item(), input.size(0))
+        m1 = metric1(imoutput.to('cpu'), target_class)
+        m2 = metric2(imoutput.to('cpu'), target_class)
+        losses.update(loss.item(), len(data))
         avg_m1.update(m1)
         avg_m2.update(m2)
 
@@ -283,19 +296,25 @@ def train(train_loader, model, criterion, optimizer, epoch):
                       avg_m1=avg_m1,
                       avg_m2=avg_m2)
                  )
-        
-        if epoch % 40 == 0:
-            # TODO (Q1.3): Visualize/log things as mentioned in handout at appropriate intervals
-            img = wandb.Image(heatmap, boxes={
-                "predictions": {
-                    "box_data": get_box_data(data['label'], data['gt_boxes']),
-                    "class_labels": class_id_to_label,       
-                },
-            })
-            wandb.log(
-                {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
-            )
-            c_map = plt.get_cmap('jet')
+        # TODO (Q1.3): Visualize/log things as mentioned in handout at appropriate intervals
+        c_map = plt.get_cmap('jet')
+        table = wandb.Table(columns=["id", "image", "heatmap"])
+        if (epoch==0 or epoch==1 ) and i==0:
+            table = wandb.Table(columns=["id", "image", "heatmap"])
+            for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
+                input_img = wandb.Image(im, boxes={
+                    "predictions": {
+                        "box_data": get_box_data(data['gt_classes'][n], data['gt_boxes'][n]),
+                        "class_labels": class_id_to_label,       
+                    },
+                })
+                # Log selective masks
+                att_map = torch.mean(vis_heatmap[n][data['gt_classes'][n]], dim=0)
+                table.add_data(n, input_img, wandb.Image(c_map(att_map.cpu().detach().numpy())))
+                if n==1: break
+        wandb.log(
+            {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
+        )
         # End of train()
 
 def validate(val_loader, model, criterion, epoch=0):
@@ -306,25 +325,32 @@ def validate(val_loader, model, criterion, epoch=0):
 
     # switch to evaluate mode
     model.eval()
-    
+    class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
     end = time.time()
     for i, (data) in enumerate(val_loader):
-
         # TODO (Q1.1): Get inputs from the data dict
         # Convert inputs to cuda if training on GPU
-        target = data['image'].to('cuda')
-
+        input_im = data['image'].to('cuda')
+        target_class = data['label']
+                            
         # TODO (Q1.1): Get output from model
-        conv_out = model(target)
+        if i==0: print("Forward pass")
+        conv_out = model(input_im)
         
         # TODO (Q1.1): Perform any necessary functions on the output
-        imoutput = F.max_pool2d(conv_out, kernel_size=(conv_out.size(2), conv_out.size(3))).squeeze()
-        imoutput = F.sigmoid(imoutput)
-
+        imoutput = (nn.MaxPool2d(kernel_size=(conv_out.size(2), conv_out.size(3)))(conv_out)).squeeze()
+        imoutput = torch.sigmoid(imoutput)
+         
+        if i==0: print(f"Output size:{imoutput.size()}")
+        vis_heatmap = F.interpolate(conv_out, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
+        if i==0: print(f"Heatmap output size:{vis_heatmap.shape}")
+        
+        # TODO (Q1.1): Compute loss using ``criterion``
+        loss = criterion(imoutput.to('cpu'), target_class)
+        
         # measure metrics and record loss
-        m1 = metric1(imoutput.data, target)
-        m2 = metric2(imoutput.data, target)
-        losses.update(loss.item(), input.size(0))
+        m1 = metric1(imoutput.to('cpu'), target_class)
+        m2 = metric2(imoutput.to('cpu'), target_class)
         avg_m1.update(m1)
         avg_m2.update(m2)
 
@@ -346,20 +372,38 @@ def validate(val_loader, model, criterion, epoch=0):
                       avg_m2=avg_m2))
 
         # TODO (Q1.3): Visualize things as mentioned in handout
-        # TODO (Q1.3): Visualize at appropriate intervals
+        c_map = plt.get_cmap('jet')
         
+        # TODO (Q1.3): Visualize at appropriate intervals
+        if (epoch==0 or epoch==1 ) and i==0:
+            table = wandb.Table(columns=["id", "image", "heatmap"])
+            for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
+                input_img = wandb.Image(im, boxes={
+                    "predictions": {
+                        "box_data": get_box_data(data['gt_classes'][n], data['gt_boxes'][n]),
+                        "class_labels": class_id_to_label,       
+                    },
+                })
+                # Log selective masks
+                att_map = torch.mean(vis_heatmap[n][data['gt_classes'][n]], dim=0)
+                table.add_data(n, input_img, wandb.Image(c_map(att_map.cpu().detach().numpy())))
+                if n==1: break
+        wandb.log(
+            {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
+        )
+
 
     print(' * Metric1 {avg_m1.avg:.3f} Metric2 {avg_m2.avg:.3f}'.format(
         avg_m1=avg_m1, avg_m2=avg_m2))
 
     return avg_m1.avg, avg_m2.avg
 
+
 # TODO: You can make changes to this function if you wish (not necessary)
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
-
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -379,21 +423,20 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
+
 def metric1(output, target):
     # TODO (Q1.5): compute metric1
-    mean_ap = sklearn.metrics.average_precision_score(
-        target.cpu().numpy(), output.cpu().numpy(), average='micro')
-    return [mean_ap]    #[0]
+    target = target.detach().numpy()
+    output = output.detach().numpy()
+    mean_ap = sklearn.metrics.average_precision_score(target, output, average='micro')
+    return mean_ap    #[0]
 
 
-def metric2(output, target):
+def metric2(output, target, thres=0.5):
     # TODO (Q1.5): compute metric2
-    output_sigmoid = F.sigmoid(output)
-    output_binary = output_sigmoid>threshold
-    sig_recall = sklearn.metrics.recall_score(
-        np.int32(target.cpu().numpy()), np.int32(output_binary.cpu().numpy()), average='micro')
-    return [sig_recall]  #[0]
-
+    target = target.detach().numpy()
+    sig_recall = sklearn.metrics.recall_score(target, (output_sigmoid>thres).detach().numpy(), average='micro')
+    return sig_recall  #[0]
 
 if __name__ == '__main__':
     main()
