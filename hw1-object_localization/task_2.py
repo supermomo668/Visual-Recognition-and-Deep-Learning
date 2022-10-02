@@ -151,16 +151,38 @@ def train_model(model, train_loader=None, val_loader=None, optimizer=None, args=
             # take care that proposal values should be in pixels
             # Convert inputs to cuda if training on GPU
             
-
-            # backward pass and update
+            # forward
+            model(image, rois, gt_vec)
             loss = model.loss
             train_loss += loss.item()
             step_cnt += 1
 
+            # backward pass and update
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+    
+            # Log to screen
+            if step % disp_interval == 0:
+                duration = t.toc(average=False)
+                fps = step_cnt / duration
+                log_text = 'step %d, image: %s, loss: %.4f, fps: %.2f (%.2fs per batch), lr: %.9f, momen: %.4f, wt_dec: %.6f' % (
+                    step, blobs['im_name'], train_loss / step_cnt, fps, 1./fps, lr, momentum, weight_decay)
+                log_print(log_text, color='green', attrs=['bold'])
+                re_cnt = True
 
+            #TODO: evaluate the model every N iterations (N defined in handout)
+            if step % eval_interval == 0 and step>0:
+                aps = test_net(name='test_weights', net = net, imdb = test_imdb, logger=logger, step=step, visualize=True, thresh = 0.0001)
+                if firstEval:
+                    vis.line(X = np.array([step]), Y = np.array([np.mean(aps)]), win="test/mAP", opts=dict(title='Test mAP'))
+                    firstEval = 0
+                else:
+                    vis.line(X = np.array([step]), Y = np.array([np.mean(aps)]), win="test/mAP", update="append", opts=dict(title='Test mAP'))
+                for i in range(len(aps)):
+                    logger.scalar_summary(tag='test/AP/'+imdb._classes[i], value=aps[i], step=step)
+            
+    
             # TODO (Q2.2): evaluate the model every N iterations (N defined in handout)
             # Add wandb logging wherever necessary
             if iter % args.val_interval == 0 and iter != 0:
@@ -180,29 +202,37 @@ def main():
     """
     Creates dataloaders, network, and calls the trainer
     """
+    global args[
     args = parser.parse_args()
     # TODO (Q2.2): Load datasets and create dataloaders
-    # Initialize wandb logger
-    train_dataset = None
-    val_dataset = None
+    dataset = VOCDataset('trainval', top_n=10, image_size=512, data_dir='../data/VOCdevkit/VOC2007/')
+    n = len(dataset)
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(np.floor(n*0.8)), n-int(np.floor(n*0.8))])
+    train_sampler = torch.utils.data.SubsetRandomSampler(range(len(train_dataset)))
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=1,   # batchsize is one for this implementation
-        shuffle=True,
-        num_workers=4,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.workers,
         pin_memory=True,
-        sampler=None,
+        sampler=train_sampler,
+        collate_fn=custom_collate_fn_VOC,
         drop_last=True)
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
-        batch_size=1,
+        batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=args.workers,
         pin_memory=True,
+        collate_fn=custom_collate_fn_VOC,
         drop_last=True)
-
+    
+    # Initialize wandb logger
+    if args.use_wandb:
+        wandb.init(project="vlr-hw1", reinit=True)
+        
     # Create network and initialize
     net = WSDDN(classes=train_dataset.CLASS_NAMES)
     print(net)
@@ -241,4 +271,4 @@ def main():
     optimizer = None
 
     # Training
-    train_model(net, train_loader, optimizer, args)
+    train_model(net, train_loader, val_loader, optimizer, args)

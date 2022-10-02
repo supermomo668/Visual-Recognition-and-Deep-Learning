@@ -26,7 +26,7 @@ class WSDDN(nn.Module):
             print(classes)
 
         # TODO (Q2.1): Define the WSDDN model
-         self.features  = nn.Sequential(
+        self.features  = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=(11, 11), stride=(4, 4), padding=(2, 2)),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(3, 3), stride=(2, 2), dilation=(1, 1)),
@@ -39,10 +39,9 @@ class WSDDN(nn.Module):
             nn.ReLU(),
             nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             #nn.ReLU()
-            )
+        )
 
         self.roi_pool = RoIPool(pooled_height=6, pooled_width=6, spatial_scale=1.0/16)
-
         
         self.classifier = nn.Sequential(
             nn.Linear(in_features=9216, out_features=4096),
@@ -52,10 +51,10 @@ class WSDDN(nn.Module):
             nn.ReLU(inplace=True)
         )
         
-        self.score_fc = nn.Sequential(
+        self.score_out = nn.Sequential(
             nn.Linear(in_features=4096, out_features=20)
         )
-        self.bbox_fc = nn.Sequential(
+        self.bbox_out = nn.Sequential(
             nn.Linear(in_features=4096, out_features=20)
         )
         # loss
@@ -72,27 +71,23 @@ class WSDDN(nn.Module):
                 ):
         # TODO (Q2.1): Use image and rois as input
             # turn to channel first
-        im_data = Variable(torch.from_numpy(im_data).type(torch.FloatTensor).permute(0, 3, 1, 2)
-        rois = Variable(torch.from_numpy(rois).type(torch.FloatTensor)
+        im_data = Variable(torch.from_numpy(im_data).type(torch.FloatTensor)).permute(0, 3, 1, 2)
+        rois = Variable(torch.from_numpy(rois).type(torch.FloatTensor))
         #TODO: Use im_data and rois as input
         # compute cls_prob which are N_roi X 20 scores
-        # Checkout faster_rcnn.py for inspiration
 
-        rpns = self.roi_pool(self.features(im_data), rois)
-        rpns = rpns.view(rpns.size(0), 256 * 6 * 6)
+        rois = self.roi_pool(self.features(im_data), rois)
+        rois = rois.view(len(rois),-1)
         class_out = self.classifier(rpns)
-        cls_score = F.softmax(self.score_cls(class_out), dim=1)   
-        det_score = F.softmax(self.score_det(class_out), dim=0)
-        # cls_score = F.softmax(cls_score, dim=-1)
-        # det_score = F.softmax(det_score, dim=-2)
-        
-        
+        class_score = F.softmax(self.score_out(class_out), dim=1)   
+        detect_score = F.softmax(self.bbox_out(class_out), dim=0)
+
         # compute cls_prob which are N_roi X 20 scores
-        cls_prob = cls_score * det_score
+        class_prob = class_score * detect_score
 
         if self.training:
             label_vec = gt_vec.view(self.n_classes, -1)
-            self.cross_entropy = self.build_loss(cls_prob, label_vec)
+            self.cross_entropy = self.build_loss(class_prob, label_vec)
         return cls_prob
 
     def build_loss(self, cls_prob, label_vec):
