@@ -5,7 +5,7 @@ import torch.utils.data as data
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
-from torchvision.ops import roi_pool, roi_align
+from torchvision.ops import roi_pool, roi_align, RoIPool
 #
 from torch.autograd import Variable
 
@@ -23,7 +23,7 @@ class WSDDN(nn.Module):
         if classes is not None:
             self.classes = classes
             self.n_classes = len(classes)
-            print(classes)
+            print(f"Classes:{classes}")
 
         # TODO (Q2.1): Define the WSDDN model
         self.features  = nn.Sequential(
@@ -41,7 +41,7 @@ class WSDDN(nn.Module):
             #nn.ReLU()
         )
 
-        self.roi_pool = RoIPool(pooled_height=6, pooled_width=6, spatial_scale=1.0/16)
+        self.roi_pool = RoIPool((6, 6), spatial_scale=1.0/16)
         
         self.classifier = nn.Sequential(
             nn.Linear(in_features=9216, out_features=4096),
@@ -77,10 +77,12 @@ class WSDDN(nn.Module):
         # compute cls_prob which are N_roi X 20 scores
 
         rois = self.roi_pool(self.features(im_data), rois)
+        print(f"ROIs pooled shape:{rois.size()}")
         rois = rois.view(len(rois),-1)
-        class_out = self.classifier(rpns)
-        class_score = F.softmax(self.score_out(class_out), dim=1)   
-        detect_score = F.softmax(self.bbox_out(class_out), dim=0)
+        rois_feat = self.classifier(rois)
+        print(f"rois features:{rois_out.size()}")
+        class_score = F.softmax(self.score_out(rois_feat), dim=1)   
+        detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)
 
         # compute cls_prob which are N_roi X 20 scores
         class_prob = class_score * detect_score

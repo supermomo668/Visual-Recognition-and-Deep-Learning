@@ -185,7 +185,7 @@ def train_model(model, train_loader=None, val_loader=None, optimizer=None, args=
     
             # TODO (Q2.2): evaluate the model every N iterations (N defined in handout)
             # Add wandb logging wherever necessary
-            if iter % args.val_interval == 0 and iter != 0:
+            if i % args.val_interval == 0 and iter != 0:
                 model.eval()
                 ap = test_model(model, val_loader)
                 print("AP ", ap)
@@ -202,7 +202,7 @@ def main():
     """
     Creates dataloaders, network, and calls the trainer
     """
-    global args[
+    global args
     args = parser.parse_args()
     # TODO (Q2.2): Load datasets and create dataloaders
     dataset = VOCDataset('trainval', top_n=10, image_size=512, data_dir='../data/VOCdevkit/VOC2007/')
