@@ -19,7 +19,10 @@ def nms(bounding_boxes, confidence_score, threshold=0.05):
 
     return: list of bounding boxes and scores
     """
-    bounding_boxes = np.array(bounding_boxes)  # array
+    iou_thres = 0.3
+    pass_idx = np.where(confidence_score>threshold)
+    bounding_boxes = np.array(bounding_boxes)[pass_idx]  # array
+    confidence_score = confidence_score[pass_idx]
     order = confidence_score.argsort()[::-1]
     # sorted
     bounding_boxes = bounding_boxes[order]
