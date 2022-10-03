@@ -180,9 +180,10 @@ def custom_collate_fn_VOC(batch):
     new_dict = defaultdict(list)
     for data in batch:
         for k, v in data.items():
-            #if k=='image' or k=='label' or k=='wgt' or k=='rois':
+            if k in ['gt_classes','gt_boxes', 'rois']:
+                v =  torch.tensor(v)
             new_dict[k].append(v)
     for k, v in new_dict.items():
-        if type(v[0]) == torch.Tensor:
+        if k not in ['gt_classes','gt_boxes', 'rois']:
             new_dict[k] = torch.stack(v)
     return new_dict
