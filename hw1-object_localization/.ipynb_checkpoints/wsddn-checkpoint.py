@@ -58,7 +58,7 @@ class WSDDN(nn.Module):
             nn.Linear(in_features=4096, out_features=20)
         )
         # loss
-        self.criterion = nn.BCELoss(size_average=True).cuda()# None
+        self.criterion = nn.BCELoss(size_average=True).cuda() # None
 
     @property
     def loss(self):
@@ -70,26 +70,22 @@ class WSDDN(nn.Module):
                 gt_vec=None,
                 ):
         # TODO (Q2.1): Use image and rois as input
-            # turn to channel first
-        im_data = Variable(torch.from_numpy(im_data).type(torch.FloatTensor)).permute(0, 3, 1, 2)
-        rois = Variable(torch.from_numpy(rois).type(torch.FloatTensor))
+        im_data = Variable(image.type(torch.FloatTensor)).cuda()
+        rois = [roi.type(torch.FloatTensor).cuda() for roi in rois]
         #TODO: Use im_data and rois as input
         # compute cls_prob which are N_roi X 20 scores
-
-        rois = self.roi_pool(self.features(im_data), rois)
-        print(f"ROIs pooled shape:{rois.size()}")
-        rois = rois.view(len(rois),-1)
-        rois_feat = self.classifier(rois)
-        print(f"rois features:{rois_out.size()}")
-        class_score = F.softmax(self.score_out(rois_feat), dim=1)   
+        
+        rois = self.roi_pool(self.features(im_data), rois) # -> Tensor[K, C, output_size[0], output_size[1]]   # (N, 256, 6, 6)
+        rois = rois.view(len(rois),-1)    # (256*16=4096, 9216)
+        rois_feat = self.classifier(rois)   # (N, 4096)
+        class_score = F.softmax(self.score_out(rois_feat), dim=1)     # (4800 =300*16, 20)
         detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)
-
         # compute cls_prob which are N_roi X 20 scores
-        class_prob = class_score * detect_score
+        class_prob = class_score * detect_score   # (4800 =300*16, 20)
 
         if self.training:
-            label_vec = gt_vec.view(self.n_classes, -1)
-            self.cross_entropy = self.build_loss(class_prob, label_vec)
+            print(class_prob.size(), gt_vec.size())
+            self.cross_entropy = self.build_loss(class_prob, gt_vec)
         return cls_prob
 
     def build_loss(self, cls_prob, label_vec):
@@ -103,8 +99,9 @@ class WSDDN(nn.Module):
         # TODO (Q2.1): Compute the appropriate loss using the cls_prob
         # that is the output of forward()
         # Checkout forward() to see how it is called
-        loss = F.binary_cross_entropy(torch.clamp(torch.sum(cls_prob,dim=0), 0, 1) ,
-                                      label_vec, size_average=False)
+        cls_prob = torch.clamp(torch.sum(cls_prob, dim=0), 0, 1)
+        print(f"loss vec shape:{cls_prob.size()}, {label_vec.size()}")
+        loss = self.criterion(cls_prob , label_vec)
         return loss
 
 class FC(nn.Module):
