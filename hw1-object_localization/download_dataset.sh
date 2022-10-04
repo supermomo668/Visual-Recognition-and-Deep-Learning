@@ -9,4 +9,4 @@ tar xf VOCtest_06-Nov-2007.tar
 export DATA_DIR=$(pwd)
 
 # Download the selective search data from https://drive.google.com/drive/folders/1jRQOlAYKNFgS79Q5q9kfikyGE91LWv1I to this location
-unzip selective_search.zip -d VOCdevkit/VOC2007/selective_search_data
+#unzip selective_search_data.zip -d VOCdevkit/VOC2007/selective_search_data
