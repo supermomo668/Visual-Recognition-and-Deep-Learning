@@ -9,6 +9,10 @@ from torchvision.ops import roi_pool, roi_align, RoIPool
 #
 from torch.autograd import Variable
 
+model_urls = {
+    'alexnet': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
+}
+
 class WSDDN(nn.Module):
     n_classes = 20
     classes = np.asarray([
@@ -17,7 +21,7 @@ class WSDDN(nn.Module):
         'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor'
     ])
 
-    def __init__(self, classes=20):
+    def __init__(self, classes=20, pretrained=True):
         super(WSDDN, self).__init__()
 
         if classes is not None:
@@ -59,6 +63,15 @@ class WSDDN(nn.Module):
         )
         # loss
         self.criterion = nn.BCELoss(size_average=True).cuda() # None
+        if pretrained:
+            load_weights = model_zoo.load_url(model_urls['alexnet'])
+            weights = model.state_dict()
+            for item_name in weights.keys():
+                if 'features' in item_name:
+                    weights[item_name] = load_weights[item_name]
+        for layer in model.classifier:
+            if type(layer) == nn.Conv2d:
+                nn.init.xavier_uniform(layer.weight)
 
     @property
     def loss(self):
@@ -79,14 +92,14 @@ class WSDDN(nn.Module):
         rois = rois.view(len(rois),-1)    # (256*16=4096, 9216)
         rois_feat = self.classifier(rois)   # (N, 4096)
         class_score = F.softmax(self.score_out(rois_feat), dim=1)     # (4800 =300*16, 20)
-        detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)
+        detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)     # (4800 =300*16, 20)
         # compute cls_prob which are N_roi X 20 scores
         class_prob = class_score * detect_score   # (4800 =300*16, 20)
-
+        class_prob = class_prob.view(len(im_data), -1, self.n_classes)   # (N, 300, 20)
+        class_prob = torch.sum(class_prob, dim=1)
         if self.training:
-            print(class_prob.size(), gt_vec.size())
-            self.cross_entropy = self.build_loss(class_prob, gt_vec)
-        return cls_prob
+            self.cross_entropy = self.build_loss(class_prob.cpu(), gt_vec.cpu())
+        return class_prob
 
     def build_loss(self, cls_prob, label_vec):
         """Computes the loss
@@ -99,8 +112,7 @@ class WSDDN(nn.Module):
         # TODO (Q2.1): Compute the appropriate loss using the cls_prob
         # that is the output of forward()
         # Checkout forward() to see how it is called
-        cls_prob = torch.clamp(torch.sum(cls_prob, dim=0), 0, 1)
-        print(f"loss vec shape:{cls_prob.size()}, {label_vec.size()}")
+        cls_prob = torch.clamp(cls_prob, 0, 1)
         loss = self.criterion(cls_prob , label_vec)
         return loss
 
