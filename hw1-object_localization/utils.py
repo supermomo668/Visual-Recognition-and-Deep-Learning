@@ -19,37 +19,57 @@ def nms(bounding_boxes, confidence_score, threshold=0.05):
 
     return: list of bounding boxes and scores
     """
-    bounding_boxes = np.array(bounding_boxes)  # array
-    order = confidence_score.argsort()[::-1]
+    iou_thresh = 0.3
+    conf_pass_idx = np.where(confidence_score>= threshold)
+    bboxes = np.array(bounding_boxes)[conf_pass_idx]
+    conf_score = confidence_score[conf_pass_idx]
+    order = conf_score.argsort()[::-1]
     # sorted
-    bounding_boxes = bounding_boxes[order]
-    confidence_score = confidence_score[confidence_score]
+    bboxes = bboxes[order]
+    conf_score = conf_score[confidence_score]
     #
-    x1, y1, x2, y2 = dets[:, 0], dets[:, 1], dets[:, 2], dets[:, 3]
+    x1, y1, x2, y2 = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
     areas = (x2 - x1 + 1) * (y2 - y1 + 1)
-    order = confidence_score.argsort()[::-1]
+    order = conf_score.argsort()[::-1]
     #
-    filtered_bboxes = []
-    while len(order) > 0:
-        i = order[0]
-        filtered_bboxes.append(i)
-        xx1 = np.maximum(x1[i], x1[order[1:]])
-        yy1 = np.maximum(y1[i], y1[order[1:]])
-        xx2 = np.minimum(x2[i], x2[order[1:]])
-        yy2 = np.minimum(y2[i], y2[order[1:]])
+    pass_idx = np.arange(len(x1))
+    for n, box in enumerate(bboxes):
+        # all other idx of boxes to compare 
+        compare_idx = compare_idx[compare_idx!=i]
+        # Find out the coordinates of the intersection box
+        coords = []   # xmin, ymin, xmax, ymax
+        for i in range(4):
+            coords.append(np.maximum(box[i], boxes[temp_indices,i]))
+        # box width and height
+        w = np.maximum(0, coords[2] - coords[0] + 1)
+        h = np.maximum(0, coords[3] - coords[1] + 1)
+        # compute the ratio of overlap
+        overlap = (w * h) / areas[compare_idx]
+        # thresholded by iou "high overlaps"
+        if np.any(overlap) > iou_thresh:
+            pass_idx = pass_idx[pass_idx != n]
+    return boxes[pass_idx], conf_score[pass_idx]
 
-        w = np.maximum(0.0, xx2 - xx1 + 1)
-        h = np.maximum(0.0, yy2 - yy1 + 1)
-        inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
 
-        inds = np.where(ovr <= thresh)[0]
-        order = order[inds + 1]
-
-    return keep
-    boxes, scores = None, None
-    return boxes, scores
-
+# indices = np.arange(len(x1))
+#     for i,box in enumerate(boxes):
+#         # Create temporary indices  
+#         temp_indices = indices[indices!=i]
+#         # Find out the coordinates of the intersection box
+#         xx1 = np.maximum(box[0], boxes[temp_indices,0])
+#         yy1 = np.maximum(box[1], boxes[temp_indices,1])
+#         xx2 = np.minimum(box[2], boxes[temp_indices,2])
+#         yy2 = np.minimum(box[3], boxes[temp_indices,3])
+#         # Find out the width and the height of the intersection box
+#         w = np.maximum(0, xx2 - xx1 + 1)
+#         h = np.maximum(0, yy2 - yy1 + 1)
+#         # compute the ratio of overlap
+#         overlap = (w * h) / areas[temp_indices]
+#         # if the actual boungding box has an overlap bigger than treshold with any other box, remove it's index  
+#         if np.any(overlap) > treshold:
+#             indices = indices[indices != i]
+#     #return only the boxes at the remaining indices
+#     return boxes[indices].astype(int)
 
 # TODO: calculate the intersection over union of two boxes
 def iou(box1, box2):
