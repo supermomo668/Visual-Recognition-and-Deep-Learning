@@ -388,7 +388,6 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
         # TODO (Q1.3): Visualize at appropriate intervals
         if (epoch==0 or epoch==1 ) and i==0:
             for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
-                print(get_box_data(data['gt_classes'][n], data['gt_boxes'][n]), class_id_to_label)
                 input_img = wandb.Image(im, boxes={
                     "predictions": {
                         "box_data": get_box_data(data['gt_classes'][n], data['gt_boxes'][n]),
@@ -405,9 +404,9 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
                 else:
                     gradcam_result = att_amp
                 #
-                table.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
+                vis_table.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
                 if n==1: 
-                    wandb.log({"Visuals": table})
+                    wandb.log({"Visuals": vis_table})
                     break
                 
         wandb.log(
