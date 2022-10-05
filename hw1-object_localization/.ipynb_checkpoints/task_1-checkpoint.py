@@ -93,6 +93,7 @@ parser.add_argument(
     type=int,
     metavar='N',
     help='print frequency (default: 10)')
+
 parser.add_argument(
     '--resume',
     default='',
@@ -137,6 +138,8 @@ def main():
     if args.arch == 'localizer_alexnet':
         model = localizer_alexnet(pretrained=args.pretrained)
     elif args.arch == 'localizer_alexnet_robust':
+        model = localizer_alexnet_robust(pretrained=args.pretrained)
+    else:
         model = localizer_alexnet_robust(pretrained=args.pretrained)
     #print(model)
 
@@ -215,9 +218,9 @@ def main():
     # Ideally, use flags since wandb makes it harder to debug code.
     # GradCAM
     cam_extractor = SmoothGradCAMpp(model)
+    global vis_table_val, vis_table_train
     vis_table_val = wandb.Table(columns=["image", "heatmap", "GradCAM"])
     vis_table_train = wandb.Table(columns=["image", "heatmap", "GradCAM"])
-    global vis_table_test, vis_table_train
     for epoch in range(args.start_epoch, args.epochs):    
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, cam_extractor)
@@ -241,7 +244,7 @@ def main():
     wandb.finish()
 
 # TODO: You can add input arguments if you wish
-def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None, vis_table=None):
+def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -253,7 +256,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None, 
     model.train()
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
     end = time.time()
-    for i, (data) in enumerate(train_loader):
+    for i, data in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -313,7 +316,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None, 
                  )
         # TODO (Q1.3): Visualize/log things as mentioned in handout at appropriate intervals
         c_map = plt.get_cmap('jet')
-        if epoch <= 1 and i==0:
+        if epoch % visual_interval == 0 and i==0:
             for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
                 input_img = wandb.Image(im, boxes={
                     "predictions": {
@@ -333,14 +336,14 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None, 
                     gradcam_result = att_map
                 #
                 vis_table_train.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(gradcam_result))
-                if n==1: 
+                if n==2: 
                     break
         wandb.log(
             {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
         )
         # End of train()
 
-def validate(val_loader, model, criterion, epoch=0, cam_extractor=None, vis_table=None):
+def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
     batch_time = AverageMeter()
     losses = AverageMeter()
     avg_m1 = AverageMeter()
@@ -398,27 +401,26 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None, vis_tabl
         c_map = plt.get_cmap('jet')
 
         # TODO (Q1.3): Visualize at appropriate intervals
-        if (epoch==0 or epoch==1 ) and i==0:
-            for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
-                input_img = wandb.Image(im, boxes={
-                    "predictions": {
-                        "box_data": get_box_data(data['gt_classes'][n], data['gt_boxes'][n]),
-                        "class_labels": class_id_to_label,       
-                    },
-                })
-                # Log feature map from model.classifier for visualizing heampa
-                att_map = vis_heatmap[n][data['gt_classes'][n][0]].cpu().detach().numpy()
-                att_map = minmax_scale(np.abs(att_map).ravel(), feature_range=(0,1)).reshape(att_map.shape)
-                # Retrieve the CAM by passing the class index and the model output
-                if cam_extractor:
-                    activation_map = cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n])
-                    gradcam_result = overlay_mask(to_pil_image(im), to_pil_image(activation_map[0][n], mode='F'), alpha=0.5)
-                else:
-                    gradcam_result = att_amp
-                #
-                vis_table_val.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
-                if n==2: 
-                    break
+        for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
+            input_img = wandb.Image(im, boxes={
+                "predictions": {
+                    "box_data": get_box_data(data['gt_classes'][n], data['gt_boxes'][n]),
+                    "class_labels": class_id_to_label,       
+                },
+            })
+            # Log feature map from model.classifier for visualizing heampa
+            att_map = vis_heatmap[n][data['gt_classes'][n][0]].cpu().detach().numpy()
+            att_map = minmax_scale(np.abs(att_map).ravel(), feature_range=(0,1)).reshape(att_map.shape)
+            # Retrieve the CAM by passing the class index and the model output
+            if cam_extractor:
+                activation_map = cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n])
+                gradcam_result = overlay_mask(to_pil_image(im), to_pil_image(activation_map[0][n], mode='F'), alpha=0.5)
+            else:
+                gradcam_result = att_amp
+            #
+            vis_table_val.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
+            if n==3: 
+                break
         wandb.log(
             {'val/loss':loss, 'val/metric1': m1,  'val/metric2': m2}
         )
