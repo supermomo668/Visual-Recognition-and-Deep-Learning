@@ -54,17 +54,32 @@ class LocalizerAlexNetRobust(nn.Module):
     def __init__(self, num_classes=20):
         super(LocalizerAlexNetRobust, self).__init__()
         # TODO (Q1.7): Define model
-        self.features = copy.deepcopy(LocalizerAlexNet(num_classes=20).features)
+        self.features = copy.deepcopy(LocalizerAlexNet(num_classes=num_classes).features)
         self.classifier = nn.Sequential(
             nn.Dropout(0.3),
             nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1)),
             nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
             nn.Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1)),
             nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
             nn.Conv2d(256, 20, kernel_size=(1, 1), stride=(1, 1))
         )
     
-
+    def forward(self, x):
+        # TODO (Q1.1): Define forward pass
+        x = self.features(x)
+        x = self.classifier(x)
+        self.feat_map = torch.clone(x)   # cloned for heatmap output
+        # pooling and sigmoid for generating classification labels
+        x = nn.MaxPool2d(kernel_size=(x.size(2),x.size(3)))(x)
+        x = nn.Sigmoid()(x.squeeze())
+        return x
+    
+    # This part save the feature map as property
+    @property
+    def featmap(self, x):
+        return self.feat_map
 
 def localizer_alexnet(pretrained=False, **kwargs):
     r"""AlexNet model architecture from the

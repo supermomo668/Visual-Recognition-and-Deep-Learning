@@ -37,7 +37,7 @@ model_names = sorted(name for name in models.__dict__
                      and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--arch', default='localizer_alexnet')
+parser.add_argument('--arch', default='localizer_alexnet / localizer_alexnet_robust')
 parser.add_argument(
     '-j',
     '--workers',
@@ -215,13 +215,16 @@ def main():
     # Ideally, use flags since wandb makes it harder to debug code.
     # GradCAM
     cam_extractor = SmoothGradCAMpp(model)
+    vis_table_val = wandb.Table(columns=["image", "heatmap", "GradCAM"])
+    vis_table_train = wandb.Table(columns=["image", "heatmap", "GradCAM"])
+    global vis_table_test, vis_table_train
     for epoch in range(args.start_epoch, args.epochs):    
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, cam_extractor, wandb.Table(columns=["image", "heatmap", "GradCAM"]))
+        train(train_loader, model, criterion, optimizer, epoch, cam_extractor)
 
         # evaluate on validation set
         if epoch % args.eval_freq == 0:
-            m1, m2 = validate(val_loader, model, criterion, epoch, cam_extractor, wandb.Table(columns=["image", "heatmap", "GradCAM"]))
+            m1, m2 = validate(val_loader, model, criterion, epoch, cam_extractor)
             score = m1 * m2
             # remember best prec@1 and save checkpoint
             is_best = score > best_prec1
@@ -233,6 +236,8 @@ def main():
                 'best_prec1': best_prec1,
                 'optimizer': optimizer.state_dict(),
             }, is_best)
+    wandb.log({"train/Visuals": vis_table_train})
+    wandb.log({"val/Visuals": vis_table_val})
     wandb.finish()
 
 # TODO: You can add input arguments if you wish
@@ -327,7 +332,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None, 
                 else:
                     gradcam_result = att_map
                 #
-                vis_table.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(gradcam_result))
+                vis_table_train.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(gradcam_result))
                 if n==1: 
                     break
         wandb.log(
@@ -411,8 +416,8 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None, vis_tabl
                 else:
                     gradcam_result = att_amp
                 #
-                vis_table.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
-                if n==1: 
+                vis_table_val.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
+                if n==2: 
                     break
         wandb.log(
             {'val/loss':loss, 'val/metric1': m1,  'val/metric2': m2}
