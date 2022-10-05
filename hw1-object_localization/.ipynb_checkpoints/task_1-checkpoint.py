@@ -146,8 +146,9 @@ def main():
     # TODO (Q1.1): define loss function (criterion) and optimizer from [1]
     # also use an LR scheduler to decay LR by 10 every 30 epochs
     #criterion = nn.MultiLabelSoftMarginLoss().cuda()   #
+    # use binary cross entropy to evaluate difference between output and groundtruth labels (one-hot)
     criterion = nn.BCELoss().cuda()
-
+    # optimizer with SGD with given parameters
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
@@ -178,10 +179,13 @@ def main():
     # Ensure that the sizes are 512x512
     # Also ensure that data directories are correct
     # The ones use for testing by TAs might be different
+    # fix seed
+    torch.seed(101)
     n = len(dataset)
+    # split dataset 80/20 for train/validation
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(np.floor(n*0.8)), n-int(np.floor(n*0.8))])
     train_sampler = torch.utils.data.SubsetRandomSampler(range(len(train_dataset)))
-
+    # loader for the relative dataset
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -259,9 +263,12 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
         if i==0: print("Forward pass")
         cls_out = model(input_im)
         # TODO (Q1.1): Perform any necessary functions on the output
+        # Pooling + sigmoid is moved to within AlexNet.py
         # imoutput = nn.MaxPool2d(kernel_size=(conv_out.size(2), conv_out.size(3)))(conv_out)
         # imoutput = torch.sigmoid(imoutput.squeeze())
+        
         if i==0: print(f"Output size:{model.feat_map.size()}")
+        # upsample to match input size
         vis_heatmap = F.interpolate(model.feat_map, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
         if i==0: print(f"Heatmap output size:{vis_heatmap.shape}")
         
@@ -311,7 +318,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
                         "class_labels": class_id_to_label,       
                     },
                 })
-                # Log selective masks
+                # Log feature map from model.classifier for visualizing heampa
                 att_map = vis_heatmap[n][data['gt_classes'][n][0]].cpu().detach().numpy()
                 att_map = minmax_scale(np.abs(att_map).ravel(), feature_range=(0,1)).reshape(att_map.shape)
                 
@@ -352,11 +359,13 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
         # TODO (Q1.1): Get output from model
         if i==0: print("Forward pass")
         cls_out = model(input_im)
-        # TODO (Q1.1): Perform any necessary functions on the output        
+        # TODO (Q1.1): Perform any necessary functions on the output
+        # upsample to match input size
         vis_heatmap = F.interpolate(model.feat_map, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
         if i==0: print(f"Heatmap output size:{vis_heatmap.shape}")
         
         # TODO (Q1.1): Compute loss using ``criterion``
+        # (same as above)
         loss = criterion(cls_out.to('cpu'), target_class)
         
         # measure metrics and record loss
@@ -383,6 +392,7 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
                       avg_m2=avg_m2))
 
         # TODO (Q1.3): Visualize things as mentioned in handout
+        # jet colormap
         c_map = plt.get_cmap('jet')
 
         # TODO (Q1.3): Visualize at appropriate intervals
@@ -394,7 +404,7 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
                         "class_labels": class_id_to_label,       
                     },
                 })
-                # Log selective masks
+                # Log feature map from model.classifier for visualizing heampa
                 att_map = vis_heatmap[n][data['gt_classes'][n][0]].cpu().detach().numpy()
                 att_map = minmax_scale(att_map.ravel(), feature_range=(0,1)).reshape(att_map.shape)
                 # Retrieve the CAM by passing the class index and the model output
