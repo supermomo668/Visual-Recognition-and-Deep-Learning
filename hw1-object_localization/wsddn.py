@@ -110,7 +110,7 @@ class WSDDN(nn.Module):
         # that is the output of forward()
         # Checkout forward() to see how it is called
         cls_prob = torch.clamp(torch.sum(cls_prob.cpu(), dim=1), 0, 1)
-        loss = self.criterion(cls_prob , label_vec.cpu()}})
+        loss = self.criterion(cls_prob , label_vec.cpu())
         return loss
 
 class FC(nn.Module):
