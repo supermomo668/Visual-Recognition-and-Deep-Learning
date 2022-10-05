@@ -217,11 +217,11 @@ def main():
     cam_extractor = SmoothGradCAMpp(model)
     for epoch in range(args.start_epoch, args.epochs):    
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, cam_extractor)
+        train(train_loader, model, criterion, optimizer, epoch, cam_extractor, wandb.Table(columns=["image", "heatmap", "GradCAM"]))
 
         # evaluate on validation set
         if epoch % args.eval_freq == 0:
-            m1, m2 = validate(val_loader, model, criterion, epoch, cam_extractor)
+            m1, m2 = validate(val_loader, model, criterion, epoch, cam_extractor, wandb.Table(columns=["image", "heatmap", "GradCAM"]))
             score = m1 * m2
             # remember best prec@1 and save checkpoint
             is_best = score > best_prec1
@@ -233,9 +233,10 @@ def main():
                 'best_prec1': best_prec1,
                 'optimizer': optimizer.state_dict(),
             }, is_best)
+    wandb.finish()
 
 # TODO: You can add input arguments if you wish
-def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
+def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None, vis_table=None):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -247,8 +248,6 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
     model.train()
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
     end = time.time()
-    vis_table = wandb.Table(columns=["image", "heatmap", "GradCAM"])
-    gradcam_table = wandb.Table(columns=["image", "GradCAM"])
     for i, (data) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
@@ -331,14 +330,12 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
                 vis_table.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(gradcam_result))
                 if n==1: 
                     break
-                    
-        wandb.log({"train/Visuals": vis_table})
         wandb.log(
             {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
         )
         # End of train()
 
-def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
+def validate(val_loader, model, criterion, epoch=0, cam_extractor=None, vis_table=None):
     batch_time = AverageMeter()
     losses = AverageMeter()
     avg_m1 = AverageMeter()
@@ -347,7 +344,7 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
     # switch to evaluate mode
     model.eval()
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
-    vis_table = wandb.Table(columns=["image", "heatmap", "GradCam"])
+    
     end = time.time()
     for i, (data) in enumerate(val_loader):
         # TODO (Q1.1): Get inputs from the data dict
@@ -406,7 +403,7 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
                 })
                 # Log feature map from model.classifier for visualizing heampa
                 att_map = vis_heatmap[n][data['gt_classes'][n][0]].cpu().detach().numpy()
-                att_map = minmax_scale(att_map.ravel(), feature_range=(0,1)).reshape(att_map.shape)
+                att_map = minmax_scale(np.abs(att_map).ravel(), feature_range=(0,1)).reshape(att_map.shape)
                 # Retrieve the CAM by passing the class index and the model output
                 if cam_extractor:
                     activation_map = cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n])
@@ -417,7 +414,6 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
                 vis_table.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
                 if n==1: 
                     break
-        wandb.log({"val/Visuals": vis_table})
         wandb.log(
             {'val/loss':loss, 'val/metric1': m1,  'val/metric2': m2}
         )
