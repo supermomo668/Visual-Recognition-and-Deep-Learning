@@ -65,11 +65,9 @@ class WSDDN(nn.Module):
         self.criterion = nn.BCELoss(size_average=True).cuda() # None
         if pretrained:
             load_weights = model_zoo.load_url(model_urls['alexnet'])
-            weights = model.state_dict()
-            for item_name in weights.keys():
-                if 'features' in item_name:
-                    weights[item_name] = load_weights[item_name]
-        for layer in model.classifier:
+            for item_name in self.features.state_dict().keys():
+                self.features.state_dict()[item_name] = load_weights['features.'+item_name]
+        for layer in self.classifier:
             if type(layer) == nn.Conv2d:
                 nn.init.xavier_uniform(layer.weight)
 
@@ -96,9 +94,8 @@ class WSDDN(nn.Module):
         # compute cls_prob which are N_roi X 20 scores
         class_prob = class_score * detect_score   # (4800 =300*16, 20)
         class_prob = class_prob.view(len(im_data), -1, self.n_classes)   # (N, 300, 20)
-        class_prob = torch.sum(class_prob, dim=1)
         if self.training:
-            self.cross_entropy = self.build_loss(class_prob.cpu(), gt_vec.cpu())
+            self.cross_entropy = self.build_loss(class_prob, gt_vec)
         return class_prob
 
     def build_loss(self, cls_prob, label_vec):
@@ -112,8 +109,8 @@ class WSDDN(nn.Module):
         # TODO (Q2.1): Compute the appropriate loss using the cls_prob
         # that is the output of forward()
         # Checkout forward() to see how it is called
-        cls_prob = torch.clamp(cls_prob, 0, 1)
-        loss = self.criterion(cls_prob , label_vec)
+        cls_prob = torch.clamp(torch.sum(cls_prob.cpu(), dim=1), 0, 1)
+        loss = self.criterion(cls_prob , label_vec.cpu()}})
         return loss
 
 class FC(nn.Module):

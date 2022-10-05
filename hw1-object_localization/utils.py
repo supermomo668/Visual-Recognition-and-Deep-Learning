@@ -20,13 +20,13 @@ def nms(bounding_boxes, confidence_score, threshold=0.05):
     return: list of bounding boxes and scores
     """
     iou_thresh = 0.3
-    conf_pass_idx = np.where(confidence_score>= threshold)
+    conf_pass_idx = np.where(confidence_score>= threshold)[0]
     bboxes = np.array(bounding_boxes)[conf_pass_idx]
     conf_score = confidence_score[conf_pass_idx]
-    order = conf_score.argsort()[::-1]
+    order = np.argsort(conf_score)[::-1]
     # sorted
     bboxes = bboxes[order]
-    conf_score = conf_score[confidence_score]
+    conf_score = conf_score[order]
     #
     x1, y1, x2, y2 = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
     areas = (x2 - x1 + 1) * (y2 - y1 + 1)
@@ -35,11 +35,11 @@ def nms(bounding_boxes, confidence_score, threshold=0.05):
     pass_idx = np.arange(len(x1))
     for n, box in enumerate(bboxes):
         # all other idx of boxes to compare 
-        compare_idx = compare_idx[compare_idx!=i]
+        compare_idx = pass_idx[pass_idx!=n]
         # Find out the coordinates of the intersection box
         coords = []   # xmin, ymin, xmax, ymax
         for i in range(4):
-            coords.append(np.maximum(box[i], boxes[temp_indices,i]))
+            coords.append(np.maximum(box[i], bboxes[compare_idx, i]))
         # box width and height
         w = np.maximum(0, coords[2] - coords[0] + 1)
         h = np.maximum(0, coords[3] - coords[1] + 1)
@@ -48,7 +48,7 @@ def nms(bounding_boxes, confidence_score, threshold=0.05):
         # thresholded by iou "high overlaps"
         if np.any(overlap) > iou_thresh:
             pass_idx = pass_idx[pass_idx != n]
-    return boxes[pass_idx], conf_score[pass_idx]
+    return bboxes[pass_idx], conf_score[pass_idx]
 
 
 # indices = np.arange(len(x1))
