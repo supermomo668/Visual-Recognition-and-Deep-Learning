@@ -39,11 +39,13 @@ class LocalizerAlexNet(nn.Module):
         # TODO (Q1.1): Define forward pass
         x = self.features(x)
         x = self.classifier(x)
-        self.feat_map = torch.clone(x)
+        self.feat_map = torch.clone(x)   # cloned for heatmap output
+        # pooling and sigmoid for generating classification labels
         x = nn.MaxPool2d(kernel_size=(x.size(2),x.size(3)))(x)
         x = nn.Sigmoid()(x.squeeze())
         return x
     
+    # This part save the feature map as property
     @property
     def featmap(self, x):
         return self.feat_map
