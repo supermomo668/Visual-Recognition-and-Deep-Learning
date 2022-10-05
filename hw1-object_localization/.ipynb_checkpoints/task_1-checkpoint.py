@@ -213,10 +213,9 @@ def main():
     if USE_WANDB:
         wandb.init(project="vlr-hw1", reinit=True)
     # Ideally, use flags since wandb makes it harder to debug code.
-
-    for epoch in range(args.start_epoch, args.epochs):
-        # GradCAM
-        cam_extractor = SmoothGradCAMpp(model)
+    # GradCAM
+    cam_extractor = SmoothGradCAMpp(model)
+    for epoch in range(args.start_epoch, args.epochs):    
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, cam_extractor)
 
@@ -310,7 +309,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
                  )
         # TODO (Q1.3): Visualize/log things as mentioned in handout at appropriate intervals
         c_map = plt.get_cmap('jet')
-        if (epoch==0 or epoch==1 ) and i==0:
+        if epoch <= 1 and i==0:
             for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
                 input_img = wandb.Image(im, boxes={
                     "predictions": {
@@ -331,8 +330,9 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
                 #
                 vis_table.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(gradcam_result))
                 if n==1: 
-                    wandb.log({"Visuals": vis_table})
                     break
+                    
+        wandb.log({"train/Visuals": vis_table})
         wandb.log(
             {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
         )
@@ -347,8 +347,7 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
     # switch to evaluate mode
     model.eval()
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
-    vis_table = wandb.Table(columns=["image", "heatmap"])
-    gradcam_table = wandb.Table(columns=["image", "GradCam"])
+    vis_table = wandb.Table(columns=["image", "heatmap", "GradCam"])
     end = time.time()
     for i, (data) in enumerate(val_loader):
         # TODO (Q1.1): Get inputs from the data dict
@@ -369,6 +368,7 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
         loss = criterion(cls_out.to('cpu'), target_class)
         
         # measure metrics and record loss
+        losses.update(loss.item(), len(data))
         m1 = metric1(cls_out.to('cpu'), target_class)
         m2 = metric2(cls_out.to('cpu'), target_class)
         avg_m1.update(m1)
@@ -416,9 +416,8 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
                 #
                 vis_table.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
                 if n==1: 
-                    wandb.log({"val/Visuals": vis_table})
                     break
-                
+        wandb.log({"val/Visuals": vis_table})
         wandb.log(
             {'val/loss':loss, 'val/metric1': m1,  'val/metric2': m2}
         )
