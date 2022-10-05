@@ -128,7 +128,7 @@ best_prec1 = 0
 visual_interval = 15
 
 def main():
-    global args, best_prec1
+    global args, best_prec1, dataset
     args = parser.parse_args()
     args.distributed = args.world_size > 1
 
@@ -180,7 +180,7 @@ def main():
     # Also ensure that data directories are correct
     # The ones use for testing by TAs might be different
     # fix seed
-    torch.seed(101)
+    torch.manual_seed(101)
     n = len(dataset)
     # split dataset 80/20 for train/validation
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(np.floor(n*0.8)), n-int(np.floor(n*0.8))])
@@ -416,11 +416,11 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
                 #
                 vis_table.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
                 if n==1: 
-                    wandb.log({"Visuals": vis_table})
+                    wandb.log({"val/Visuals": vis_table})
                     break
                 
         wandb.log(
-            {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
+            {'val/loss':loss, 'val/metric1': m1,  'val/metric2': m2}
         )
 
         
@@ -454,20 +454,24 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-
 def metric1(output, target):
     # TODO (Q1.5): compute metric1
-    target = target.detach().numpy()
-    output = output.detach().numpy()
-    mean_ap = sklearn.metrics.average_precision_score(target, output, average='micro')
-    return mean_ap    #[0]
-
-
+    target = target.detach().numpy().astype('int')
+    output = output.detach().numpy().astype('float')
+    # get features that aren't all zero
+    feat_considered = ~np.all(np.concatenate([target, output]), axis=0)
+    mean_ap = sklearn.metrics.average_precision_score(target[:,feat_considered], output[:,feat_considered], average='samples')
+    return mean_ap   #[0]
+        
 def metric2(output, target, thres=0.5):
     # TODO (Q1.5): compute metric2
-    target = target.detach().numpy()
-    sig_recall = sklearn.metrics.recall_score(target, (output_sigmoid>thres).detach().numpy(), average='micro')
-    return sig_recall  #[0]
+    target = np.int32(target.detach().numpy())
+    output = (output.detach().numpy()>thres).astype(int)
+    feat_considered = ~np.all(np.concatenate([target, output]), axis=0)
+    # threshold the sigmoid output and evaluate on recall where classes are present in the class
+    recall = sklearn.metrics.recall_score(target[:, feat_considered], output[:, feat_considered], average='samples')
+    #print(f"Metric 2:{recall}")
+    return recall  #[0]
 
 if __name__ == '__main__':
     main()
