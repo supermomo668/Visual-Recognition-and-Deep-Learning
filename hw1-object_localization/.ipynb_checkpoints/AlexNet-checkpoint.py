@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torchvision.models as models
 import copy
+import torch
 import torch.utils.model_zoo as model_zoo
 
 model_urls = {
@@ -38,7 +39,14 @@ class LocalizerAlexNet(nn.Module):
         # TODO (Q1.1): Define forward pass
         x = self.features(x)
         x = self.classifier(x)
+        self.feat_map = torch.clone(x)
+        x = nn.MaxPool2d(kernel_size=(x.size(2),x.size(3)))(x)
+        x = nn.Sigmoid()(x.squeeze())
         return x
+    
+    @property
+    def featmap(self, x):
+        return self.feat_map
     
 class LocalizerAlexNetRobust(nn.Module):
     def __init__(self, num_classes=20):
