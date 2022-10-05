@@ -17,11 +17,19 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
+from torchmetrics import JaccardIndex
+from sklearn.preprocessing import minmax_scale
 import wandb
 
+import matplotlib.pyplot as plt
 from AlexNet import localizer_alexnet, localizer_alexnet_robust
 from voc_dataset import *
 from utils import *
+#
+from torchvision.transforms.functional import normalize, resize, to_pil_image
+from torchcam.utils import overlay_mask
+from torchcam.methods import SmoothGradCAMpp
+
 
 USE_WANDB = True  # use flags, wandb is not convenient for debugging
 model_names = sorted(name for name in models.__dict__
@@ -31,24 +39,15 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--arch', default='localizer_alexnet')
 parser.add_argument(
-    '-wandb',
-    '--USE-WANDB',
-    default=True,
-    type=bool,
-    metavar='N',
-    help='use wandb or not?')
-
-parser.add_argument(
     '-j',
     '--workers',
     default=2,
     type=int,
     metavar='N',
-    help='number of data loading workers (default: 2)')
-
+    help='number of data loading workers (default: 4)')
 parser.add_argument(
     '--epochs',
-    default=30,
+    default=2,
     type=int,
     metavar='N',
     help='number of total epochs to run')
@@ -61,14 +60,14 @@ parser.add_argument(
 parser.add_argument(
     '-b',
     '--batch-size',
-    default=256,
+    default=32,
     type=int,
     metavar='N',
     help='mini-batch size (default: 256)')
 parser.add_argument(
     '--lr',
     '--learning-rate',
-    default=0.1,
+    default=1e-2,
     type=float,
     metavar='LR',
     help='initial learning rate')
@@ -139,18 +138,21 @@ def main():
         model = localizer_alexnet(pretrained=args.pretrained)
     elif args.arch == 'localizer_alexnet_robust':
         model = localizer_alexnet_robust(pretrained=args.pretrained)
-    print(model)
+    #print(model)
 
     model.features = torch.nn.DataParallel(model.features)
     model.cuda()
 
     # TODO (Q1.1): define loss function (criterion) and optimizer from [1]
     # also use an LR scheduler to decay LR by 10 every 30 epochs
-    criterion = nn.BCELoss().cuda()   #nn.CrossEntropyLoss().to(device)
+    #criterion = nn.MultiLabelSoftMarginLoss().cuda()   #
+    criterion = nn.BCELoss().cuda()
 
-    optimizer = torch.optim.Adam(model.parameters(), args.lr,
-                                 #momentum=args.momentum,
-                                 weight_decay=args.weight_decay)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr,
+                                momentum=args.momentum,
+                                weight_decay=args.weight_decay)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr,
+    #                             weight_decay=args.weight_decay)
 
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
@@ -171,7 +173,7 @@ def main():
 
     cudnn.benchmark = True
 
-    dataset = VOCDataset('trainval', top_n=10, image_size=512, data_dir='../data/VOCdevkit/VOC2007/')
+    dataset = VOCDataset('trainval', top_n=10, image_size=512, data_dir='./data/VOCdevkit/VOC2007/')
     # TODO (Q1.1): Create Datasets and Dataloaders using VOCDataset
     # Ensure that the sizes are 512x512
     # Also ensure that data directories are correct
@@ -209,12 +211,14 @@ def main():
     # Ideally, use flags since wandb makes it harder to debug code.
 
     for epoch in range(args.start_epoch, args.epochs):
+        # GradCAM
+        cam_extractor = SmoothGradCAMpp(model)
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch)
+        train(train_loader, model, criterion, optimizer, epoch, cam_extractor)
 
         # evaluate on validation set
         if epoch % args.eval_freq == 0:
-            m1, m2 = validate(val_loader, model, criterion, epoch)
+            m1, m2 = validate(val_loader, model, criterion, epoch, cam_extractor)
             score = m1 * m2
             # remember best prec@1 and save checkpoint
             is_best = score > best_prec1
@@ -228,17 +232,20 @@ def main():
             }, is_best)
 
 # TODO: You can add input arguments if you wish
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
     avg_m1 = AverageMeter()
     avg_m2 = AverageMeter()
+    avg_m3 = AverageMeter()
 
     # switch to train mode
     model.train()
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
     end = time.time()
+    vis_table = wandb.Table(columns=["image", "heatmap", "GradCAM"])
+    gradcam_table = wandb.Table(columns=["image", "GradCAM"])
     for i, (data) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
@@ -246,27 +253,25 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # TODO (Q1.1): Get inputs from the data dict
         # Convert inputs to cuda if training on GPU
         input_im = data['image'].to('cuda')
-        target_class = data['label']
+        target = data['label']
                             
         # TODO (Q1.1): Get output from model
         if i==0: print("Forward pass")
-        conv_out = model(input_im)
-        
+        cls_out = model(input_im)
         # TODO (Q1.1): Perform any necessary functions on the output
-        imoutput = (nn.MaxPool2d(kernel_size=(conv_out.size(2), conv_out.size(3)))(conv_out)).squeeze()
-        imoutput = torch.sigmoid(imoutput)
-         
-        if i==0: print(f"Output size:{imoutput.size()}")
-        vis_heatmap = F.interpolate(conv_out, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
+        # imoutput = nn.MaxPool2d(kernel_size=(conv_out.size(2), conv_out.size(3)))(conv_out)
+        # imoutput = torch.sigmoid(imoutput.squeeze())
+        if i==0: print(f"Output size:{model.feat_map.size()}")
+        vis_heatmap = F.interpolate(model.feat_map, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
         if i==0: print(f"Heatmap output size:{vis_heatmap.shape}")
         
         # TODO (Q1.1): Compute loss using ``criterion``
-        loss = criterion(imoutput.to('cpu'), target_class)
-        #criterion(data['gt_boxes'], imoutput)
+        loss = criterion(cls_out.cpu(), target)
         
         # measure metrics and record loss
-        m1 = metric1(imoutput.to('cpu'), target_class)
-        m2 = metric2(imoutput.to('cpu'), target_class)
+        m1 = metric1(cls_out.cpu(), target)
+        m2 = metric2(cls_out.cpu(), target)
+        
         losses.update(loss.item(), len(data))
         avg_m1.update(m1)
         avg_m2.update(m2)
@@ -298,9 +303,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                  )
         # TODO (Q1.3): Visualize/log things as mentioned in handout at appropriate intervals
         c_map = plt.get_cmap('jet')
-        table = wandb.Table(columns=["id", "image", "heatmap"])
         if (epoch==0 or epoch==1 ) and i==0:
-            table = wandb.Table(columns=["id", "image", "heatmap"])
             for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
                 input_img = wandb.Image(im, boxes={
                     "predictions": {
@@ -309,15 +312,26 @@ def train(train_loader, model, criterion, optimizer, epoch):
                     },
                 })
                 # Log selective masks
-                att_map = torch.mean(vis_heatmap[n][data['gt_classes'][n]], dim=0)
-                table.add_data(n, input_img, wandb.Image(c_map(att_map.cpu().detach().numpy())))
-                if n==1: break
+                att_map = vis_heatmap[n][data['gt_classes'][n][0]].cpu().detach().numpy()
+                att_map = minmax_scale(np.abs(att_map).ravel(), feature_range=(0,1)).reshape(att_map.shape)
+                
+                # Retrieve the CAM by passing the class index and the model output
+                if cam_extractor:
+                    activation_map = cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n])
+                    gradcam_result = overlay_mask(to_pil_image(im), to_pil_image(activation_map[0][n], mode='F'), alpha=0.5)
+                else:
+                    gradcam_result = att_map
+                #
+                vis_table.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(gradcam_result))
+                if n==1: 
+                    wandb.log({"Visuals": vis_table})
+                    break
         wandb.log(
             {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
         )
         # End of train()
 
-def validate(val_loader, model, criterion, epoch=0):
+def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
     batch_time = AverageMeter()
     losses = AverageMeter()
     avg_m1 = AverageMeter()
@@ -326,6 +340,8 @@ def validate(val_loader, model, criterion, epoch=0):
     # switch to evaluate mode
     model.eval()
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
+    vis_table = wandb.Table(columns=["image", "heatmap"])
+    gradcam_table = wandb.Table(columns=["image", "GradCam"])
     end = time.time()
     for i, (data) in enumerate(val_loader):
         # TODO (Q1.1): Get inputs from the data dict
@@ -335,22 +351,17 @@ def validate(val_loader, model, criterion, epoch=0):
                             
         # TODO (Q1.1): Get output from model
         if i==0: print("Forward pass")
-        conv_out = model(input_im)
-        
-        # TODO (Q1.1): Perform any necessary functions on the output
-        imoutput = (nn.MaxPool2d(kernel_size=(conv_out.size(2), conv_out.size(3)))(conv_out)).squeeze()
-        imoutput = torch.sigmoid(imoutput)
-         
-        if i==0: print(f"Output size:{imoutput.size()}")
-        vis_heatmap = F.interpolate(conv_out, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
+        cls_out = model(input_im)
+        # TODO (Q1.1): Perform any necessary functions on the output        
+        vis_heatmap = F.interpolate(model.feat_map, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
         if i==0: print(f"Heatmap output size:{vis_heatmap.shape}")
         
         # TODO (Q1.1): Compute loss using ``criterion``
-        loss = criterion(imoutput.to('cpu'), target_class)
+        loss = criterion(cls_out.to('cpu'), target_class)
         
         # measure metrics and record loss
-        m1 = metric1(imoutput.to('cpu'), target_class)
-        m2 = metric2(imoutput.to('cpu'), target_class)
+        m1 = metric1(cls_out.to('cpu'), target_class)
+        m2 = metric2(cls_out.to('cpu'), target_class)
         avg_m1.update(m1)
         avg_m2.update(m2)
 
@@ -373,11 +384,11 @@ def validate(val_loader, model, criterion, epoch=0):
 
         # TODO (Q1.3): Visualize things as mentioned in handout
         c_map = plt.get_cmap('jet')
-        
+
         # TODO (Q1.3): Visualize at appropriate intervals
         if (epoch==0 or epoch==1 ) and i==0:
-            table = wandb.Table(columns=["id", "image", "heatmap"])
             for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
+                print(get_box_data(data['gt_classes'][n], data['gt_boxes'][n]), class_id_to_label)
                 input_img = wandb.Image(im, boxes={
                     "predictions": {
                         "box_data": get_box_data(data['gt_classes'][n], data['gt_boxes'][n]),
@@ -385,14 +396,25 @@ def validate(val_loader, model, criterion, epoch=0):
                     },
                 })
                 # Log selective masks
-                att_map = torch.mean(vis_heatmap[n][data['gt_classes'][n]], dim=0)
-                table.add_data(n, input_img, wandb.Image(c_map(att_map.cpu().detach().numpy())))
-                if n==1: break
+                att_map = vis_heatmap[n][data['gt_classes'][n][0]].cpu().detach().numpy()
+                att_map = minmax_scale(att_map.ravel(), feature_range=(0,1)).reshape(att_map.shape)
+                # Retrieve the CAM by passing the class index and the model output
+                if cam_extractor:
+                    activation_map = cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n])
+                    gradcam_result = overlay_mask(to_pil_image(im), to_pil_image(activation_map[0][n], mode='F'), alpha=0.5)
+                else:
+                    gradcam_result = att_amp
+                #
+                table.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
+                if n==1: 
+                    wandb.log({"Visuals": table})
+                    break
+                
         wandb.log(
             {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
         )
 
-
+        
     print(' * Metric1 {avg_m1.avg:.3f} Metric2 {avg_m2.avg:.3f}'.format(
         avg_m1=avg_m1, avg_m2=avg_m2))
 
