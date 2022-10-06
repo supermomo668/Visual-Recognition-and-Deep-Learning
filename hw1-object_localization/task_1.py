@@ -457,6 +457,7 @@ def metric1(output, target):
     output = output.detach().numpy().astype('float')
     # get features that aren't all zero
     feat_considered = ~np.all(np.concatenate([target, output]), axis=0)
+    # compute precision over columns that aren't empty per exmaple and average by sample
     mean_ap = sklearn.metrics.average_precision_score(target[:,feat_considered], output[:,feat_considered], average='samples')
     return mean_ap   #[0]
         
@@ -464,6 +465,7 @@ def metric2(output, target, thres=0.4):
     # TODO (Q1.5): compute metric2
     target = target.detach().numpy().astype('int')
     output = (output.detach().numpy()>=thres).astype('int')
+    # just recall score over entire batch using recall_score function with micro, meaning using all classes available (column width)
     recall = sklearn.metrics.recall_score(target, output, average='micro')
     return recall  #[0]
 
