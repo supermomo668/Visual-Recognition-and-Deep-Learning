@@ -118,7 +118,7 @@ class WSDDN(nn.Module):
         cls_prob = torch.clamp(cls_prob, min=0.0, max=1.0)
         label_vec = label_vec.view(-1, self.n_classes)
         #loss = self.criterion(cls_prob.cpu(), label_vec)
-        loss = F.binary_cross_entropy(cls_prob.cpu(), label_vec)
+        loss = F.binary_cross_entropy(label_vec, cls_prob.cpu())
         return loss
 
 class FC(nn.Module):
