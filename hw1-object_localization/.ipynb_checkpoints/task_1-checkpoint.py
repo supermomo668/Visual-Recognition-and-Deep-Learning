@@ -331,7 +331,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
                 else:
                     gradcam_result = att_map
                 #
-                vis_table_train.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(gradcam_result))
+                vis_table_train.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(c_map(gradcam_result)))
                 if n==1: 
                     break
         wandb.log(
@@ -340,7 +340,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
     wandb.log({f"train/Visuals/{epoch}": vis_table_train})
     # End of train()
 
-def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
+def validate(val_loader, model, criterion, epoch=0, cam_extractor=None, cam_inference=False):
     batch_time = AverageMeter()
     losses = AverageMeter()
     avg_m1 = AverageMeter()
@@ -360,6 +360,13 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
         # TODO (Q1.1): Get output from model
         if i==0: print("Forward pass")
         cls_out = model(input_im)
+        if cam_inference:
+            new_cls_out = []
+            for n in range(len(cls_out)):
+                activation_map = cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n])
+                model.feat_map *=  activation_map/activation_map.sum()
+                new_cls_out.append(model.forward_actmap(model.feat_map))
+            cls_out = torch.stack(new_cls_out)
         # TODO (Q1.1): Perform any necessary functions on the output
         # upsample to match input size
         vis_heatmap = F.interpolate(model.feat_map, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
@@ -413,9 +420,9 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
                 activation_map = cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n])
                 gradcam_result = overlay_mask(to_pil_image(im), to_pil_image(activation_map[0][n], mode='F'), alpha=0.5)
             else:
-                gradcam_result = att_amp
+                gradcam_result = att_map
             #
-            vis_table_val.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
+            vis_table_val.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(c_map(gradcam_result)))
             if n==3: 
                 break
         print(' * Metric1 {avg_m1.avg:.3f} Metric2 {avg_m2.avg:.3f}'.format(

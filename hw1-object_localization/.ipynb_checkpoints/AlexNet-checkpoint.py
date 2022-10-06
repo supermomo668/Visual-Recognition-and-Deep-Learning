@@ -40,8 +40,11 @@ class LocalizerAlexNet(nn.Module):
         x = self.features(x)
         x = self.classifier(x)
         self.feat_map = torch.clone(x)   # cloned for heatmap output
+        return self.forward_actmap(self.feat_map)
+    
+    def forward_actmap(self, actmap):
         # pooling and sigmoid for generating classification labels
-        x = nn.MaxPool2d(kernel_size=(x.size(2),x.size(3)))(x)
+        x = nn.MaxPool2d(kernel_size=(actmap.size(2), actmap.size(3)))(actmap)
         x = nn.Sigmoid()(x.squeeze())
         return x
     
@@ -71,8 +74,18 @@ class LocalizerAlexNetRobust(nn.Module):
         x = self.features(x)
         x = self.classifier(x)
         self.feat_map = torch.clone(x)   # cloned for heatmap output
+        return x
+    
+    def forward(self, x):
+        # TODO (Q1.1): Define forward pass
+        x = self.features(x)
+        x = self.classifier(x)
+        self.feat_map = torch.clone(x)   # cloned for heatmap output
+        return self.forward_actmap(self.feat_map)
+    
+    def forward_actmap(self, actmap):
         # pooling and sigmoid for generating classification labels
-        x = nn.MaxPool2d(kernel_size=(x.size(2),x.size(3)))(x)
+        x = nn.MaxPool2d(kernel_size=(actmap.size(2), actmap.size(3)))(actmap)
         x = nn.Sigmoid()(x.squeeze())
         return x
     
