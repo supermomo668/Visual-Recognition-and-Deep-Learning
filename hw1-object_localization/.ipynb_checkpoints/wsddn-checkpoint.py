@@ -63,6 +63,7 @@ class WSDDN(nn.Module):
         )
         # loss
         self.criterion = nn.BCELoss(size_average=True).cuda() # None
+        # self.criterion = nn.MultiLabelSoftMarginLoss(size_average=True).cuda() # None
         if pretrained:
             load_weights = model_zoo.load_url(model_urls['alexnet'])
             for item_name in self.features.state_dict().keys():
@@ -113,8 +114,11 @@ class WSDDN(nn.Module):
         # TODO (Q2.1): Compute the appropriate loss using the cls_prob
         # that is the output of forward()
         # Checkout forward() to see how it is called
-        cls_prob = torch.clamp(torch.sum(cls_prob, dim=1), 0, 1)
-        loss = self.criterion(cls_prob.cpu(), label_vec)
+        cls_prob = torch.sum(cls_prob, dim=1).view(-1, self.n_classes)
+        cls_prob = torch.clamp(cls_prob, min=0.0, max=1.0)
+        label_vec = label_vec.view(-1, self.n_classes)
+        #loss = self.criterion(cls_prob.cpu(), label_vec)
+        loss = F.binary_cross_entropy(cls_prob.cpu(), label_vec)
         return loss
 
 class FC(nn.Module):
