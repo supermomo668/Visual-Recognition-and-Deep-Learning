@@ -37,7 +37,7 @@ model_names = sorted(name for name in models.__dict__
                      and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--arch', default='localizer_alexnet / localizer_alexnet_robust')
+parser.add_argument('--arch', default='localizer_alexnet')  #  / localizer_alexnet_robust
 parser.add_argument(
     '-j',
     '--workers',
@@ -67,7 +67,7 @@ parser.add_argument(
 parser.add_argument(
     '--lr',
     '--learning-rate',
-    default=1e-2,
+    default=3e-2,
     type=float,
     metavar='LR',
     help='initial learning rate')
@@ -218,9 +218,6 @@ def main():
     # Ideally, use flags since wandb makes it harder to debug code.
     # GradCAM
     cam_extractor = SmoothGradCAMpp(model)
-    global vis_table_val, vis_table_train
-    vis_table_val = wandb.Table(columns=["image", "heatmap", "GradCAM"])
-    vis_table_train = wandb.Table(columns=["image", "heatmap", "GradCAM"])
     for epoch in range(args.start_epoch, args.epochs):    
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, cam_extractor)
@@ -239,8 +236,6 @@ def main():
                 'best_prec1': best_prec1,
                 'optimizer': optimizer.state_dict(),
             }, is_best)
-    wandb.log({"train/Visuals": vis_table_train})
-    wandb.log({"val/Visuals": vis_table_val})
     wandb.finish()
 
 # TODO: You can add input arguments if you wish
@@ -255,6 +250,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
     # switch to train mode
     model.train()
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
+    vis_table_train = wandb.Table(columns=["image", "heatmap", "GradCAM"])
     end = time.time()
     for i, data in enumerate(train_loader):
         # measure data loading time
@@ -316,7 +312,7 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
                  )
         # TODO (Q1.3): Visualize/log things as mentioned in handout at appropriate intervals
         c_map = plt.get_cmap('jet')
-        if epoch % visual_interval == 0 and i==0:
+        if epoch % visual_interval == 0 or epoch % visual_interval == 1 and i==0:
             for n, (im, out_heatmap) in enumerate(zip(input_im, vis_heatmap)):
                 input_img = wandb.Image(im, boxes={
                     "predictions": {
@@ -336,12 +332,13 @@ def train(train_loader, model, criterion, optimizer, epoch, cam_extractor=None):
                     gradcam_result = att_map
                 #
                 vis_table_train.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(gradcam_result))
-                if n==2: 
+                if n==1: 
                     break
         wandb.log(
             {'train/loss':loss, 'train/metric1': m1,  'train/metric2': m2,}
         )
-        # End of train()
+    wandb.log({f"train/Visuals/{epoch}": vis_table_train})
+    # End of train()
 
 def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
     batch_time = AverageMeter()
@@ -352,7 +349,7 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
     # switch to evaluate mode
     model.eval()
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
-    
+    vis_table_val = wandb.Table(columns=["image", "heatmap", "GradCAM"])
     end = time.time()
     for i, (data) in enumerate(val_loader):
         # TODO (Q1.1): Get inputs from the data dict
@@ -421,14 +418,12 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None):
             vis_table_val.add_data(input_img, wandb.Image(c_map(att_map)),wandb.Image(gradcam_result))
             if n==3: 
                 break
+        print(' * Metric1 {avg_m1.avg:.3f} Metric2 {avg_m2.avg:.3f}'.format(
+        avg_m1=avg_m1, avg_m2=avg_m2))
         wandb.log(
             {'val/loss':loss, 'val/metric1': m1,  'val/metric2': m2}
         )
-
-        
-    print(' * Metric1 {avg_m1.avg:.3f} Metric2 {avg_m2.avg:.3f}'.format(
-        avg_m1=avg_m1, avg_m2=avg_m2))
-
+    wandb.log({f"val/Visuals/{epoch}": vis_table_val})
     return avg_m1.avg, avg_m2.avg
 
 
@@ -462,17 +457,16 @@ def metric1(output, target):
     output = output.detach().numpy().astype('float')
     # get features that aren't all zero
     feat_considered = ~np.all(np.concatenate([target, output]), axis=0)
+    # compute precision over columns that aren't empty per exmaple and average by sample
     mean_ap = sklearn.metrics.average_precision_score(target[:,feat_considered], output[:,feat_considered], average='samples')
     return mean_ap   #[0]
         
-def metric2(output, target, thres=0.5):
+def metric2(output, target, thres=0.4):
     # TODO (Q1.5): compute metric2
-    target = np.int32(target.detach().numpy())
-    output = (output.detach().numpy()>thres).astype(int)
-    feat_considered = ~np.all(np.concatenate([target, output]), axis=0)
-    # threshold the sigmoid output and evaluate on recall where classes are present in the class
-    recall = sklearn.metrics.recall_score(target[:, feat_considered], output[:, feat_considered], average='samples')
-    #print(f"Metric 2:{recall}")
+    target = target.detach().numpy().astype('int')
+    output = (output.detach().numpy()>=thres).astype('int')
+    # just recall score over entire batch using recall_score function with micro, meaning using all classes available (column width)
+    recall = sklearn.metrics.recall_score(target, output, average='micro')
     return recall  #[0]
 
 if __name__ == '__main__':
