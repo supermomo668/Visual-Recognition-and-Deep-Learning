@@ -62,8 +62,8 @@ class WSDDN(nn.Module):
             nn.Linear(in_features=4096, out_features=20)
         )
         # loss
-        self.criterion = nn.BCELoss(size_average=True).cuda() # None
-        # self.criterion = nn.MultiLabelSoftMarginLoss(size_average=True).cuda() # None
+        #self.criterion = nn.BCELoss(size_average=True).cuda() # None
+        self.criterion = nn.MultiLabelSoftMarginLoss(size_average=True).cuda() # None
         if pretrained:
             load_weights = model_zoo.load_url(model_urls['alexnet'])
             for item_name in self.features.state_dict().keys():
@@ -117,9 +117,8 @@ class WSDDN(nn.Module):
         cls_prob = torch.sum(cls_prob, dim=1).view(-1, self.n_classes)
         cls_prob = torch.clamp(cls_prob, min=0.0, max=1.0)
         label_vec = label_vec.view(-1, self.n_classes)
-        #loss = self.criterion(cls_prob.cpu(), label_vec)
-        loss = F.binary_cross_entropy(label_vec, cls_prob.cpu())
-        return loss
+        print(f"Compute loss:\n{cls_prob}\n{label_vec}")
+        return self.criterion(cls_prob.cpu(), label_vec)
 
 class FC(nn.Module):
     def __init__(self, in_features, out_features, activate=True):
