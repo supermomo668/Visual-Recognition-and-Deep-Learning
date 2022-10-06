@@ -21,6 +21,8 @@ def nms(bounding_boxes, confidence_score, threshold=0.05):
     """
     iou_thresh = 0.3
     conf_pass_idx = np.where(confidence_score>= threshold)[0]
+    if len(conf_pass_idx)==0:
+        return [], []
     bboxes = np.array(bounding_boxes)[conf_pass_idx]
     conf_score = confidence_score[conf_pass_idx]
     order = np.argsort(conf_score)[::-1]

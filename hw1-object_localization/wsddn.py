@@ -50,7 +50,7 @@ class WSDDN(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(in_features=9216, out_features=4096),
             nn.ReLU(inplace = True),
-            nn.Dropout(p=0.5),
+            nn.Dropout(p=0.2),
             nn.Linear(in_features=4096, out_features=4096),
             nn.ReLU(inplace=True)
         )
@@ -62,7 +62,7 @@ class WSDDN(nn.Module):
             nn.Linear(in_features=4096, out_features=20)
         )
         # loss
-        self.criterion = nn.BCELoss(size_average=True).cuda() # None
+        self.criterion = nn.BCELoss().cuda() # None
         if pretrained:
             load_weights = model_zoo.load_url(model_urls['alexnet'])
             for item_name in self.features.state_dict().keys():
@@ -92,11 +92,11 @@ class WSDDN(nn.Module):
         class_score = F.softmax(self.score_out(rois_feat), dim=1)     # (4800 =300*16, 20)
         detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)     # (4800 =300*16, 20)
         # compute cls_prob which are N_roi X 20 scores
-        class_prob = class_score * detect_score   # (4800 =300*16, 20)
-        class_prob = class_prob.view(len(im_data), -1, self.n_classes)   # (N, 300, 20)
+        box_prob = class_score * detect_score   # (4800 =300*16, 20)
+        box_prob = box_prob.view(len(im_data), -1, self.n_classes)   # (N, 300, 20)
         if self.training:
-            self.cross_entropy = self.build_loss(class_prob, gt_vec)
-        return class_prob
+            self.cross_entropy = self.build_loss(box_prob, gt_vec)
+        return box_prob
 
     def build_loss(self, cls_prob, label_vec):
         """Computes the loss
