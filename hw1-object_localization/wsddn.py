@@ -62,7 +62,7 @@ class WSDDN(nn.Module):
             nn.Linear(in_features=4096, out_features=20)
         )
         # loss
-        self.criterion = nn.BCELoss().cuda() # None
+        self.criterion = nn.BCELoss(size_average=True).cuda() # None
         if pretrained:
             load_weights = model_zoo.load_url(model_urls['alexnet'])
             for item_name in self.features.state_dict().keys():
@@ -86,14 +86,18 @@ class WSDDN(nn.Module):
         #TODO: Use im_data and rois as input
         # compute cls_prob which are N_roi X 20 scores
         
-        rois = self.roi_pool(self.features(im_data), rois) # -> Tensor[K, C, output_size[0], output_size[1]]   # (N, 256, 6, 6)
-        rois = rois.view(len(rois),-1)    # (256*16=4096, 9216)
-        rois_feat = self.classifier(rois)   # (N, 4096)
+        rois_pooled = self.roi_pool(self.features(im_data), rois) # -> Tensor[K, C, output_size[0], output_size[1]]   # (N, 256, 6, 6)
+        pooled_shape = rois_pooled.size()
+        rois_pooled = rois_pooled.view(len(rois_pooled),-1)    # (256*16=4096, 9216)
+        rois_feat = self.classifier(rois_pooled)   # (N, 4096)
         class_score = F.softmax(self.score_out(rois_feat), dim=1)     # (4800 =300*16, 20)
         detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)     # (4800 =300*16, 20)
         # compute cls_prob which are N_roi X 20 scores
-        box_prob = class_score * detect_score   # (4800 =300*16, 20)
-        box_prob = box_prob.view(len(im_data), -1, self.n_classes)   # (N, 300, 20)
+        try:
+            box_prob = class_score * detect_score   # (4800 =300*16, 20)
+            box_prob = box_prob.view(len(im_data), -1, self.n_classes)   # (N, 300, 20)
+        except:
+            print(f"Debug size: rois:{[len(r) for r in rois]}:{pooled_shape} \nrois_feat:{rois_feat.size()}\nbox_prob:{box_prob.size()}")
         if self.training:
             self.cross_entropy = self.build_loss(box_prob, gt_vec)
         return box_prob
@@ -109,8 +113,8 @@ class WSDDN(nn.Module):
         # TODO (Q2.1): Compute the appropriate loss using the cls_prob
         # that is the output of forward()
         # Checkout forward() to see how it is called
-        cls_prob = torch.clamp(torch.sum(cls_prob.cpu(), dim=1), 0, 1)
-        loss = self.criterion(cls_prob , label_vec.cpu())
+        cls_prob = torch.clamp(torch.sum(cls_prob, dim=1), 0, 1)
+        loss = self.criterion(cls_prob.cpu(), label_vec)
         return loss
 
 class FC(nn.Module):
