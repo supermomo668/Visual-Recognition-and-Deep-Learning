@@ -167,7 +167,7 @@ class VOCDataset(Dataset):
         proposals = self.roi_data['boxes'][0, index][conf_rank]
         proposals = np.apply_along_axis(
             lambda x: np.array([x[1]/width, x[0]/height, 
-                                x[3]/width, x[2]/height]), 0, proposals)
+                                x[3]/width, x[2]/height]), 1, proposals)
 
         ret = {}
         ret['image'] = img
