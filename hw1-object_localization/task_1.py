@@ -361,12 +361,14 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None, cam_infe
         if i==0: print("Forward pass")
         cls_out = model(input_im)
         if cam_inference:
-            new_cls_out = []
-            for n in range(len(cls_out)):
-                activation_map = cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n])
-                model.feat_map *=  activation_map/activation_map.sum()
-                new_cls_out.append(model.forward_actmap(model.feat_map))
-            cls_out = torch.stack(new_cls_out)
+            # new_cls_out = []
+            # for n in range(len(cls_out)):
+            for n in np.unique(data['gt_classes']):
+                activation_map = torch.stack(cam_extractor(cls_out[n].squeeze(0).argmax().item(), cls_out[n]))
+                activation_map = activation_map.permute(1,0,2,3)
+                activation_map = activation_map/activation_map.sum()
+                model.feat_map[:,n,:,:] = model.feat_map[:,n,:,:]*activation_map
+            cls_out = model.forward_actmap(model.feat_map)
         # TODO (Q1.1): Perform any necessary functions on the output
         # upsample to match input size
         vis_heatmap = F.interpolate(model.feat_map, size=(input_im.shape[2],input_im.shape[3]), mode='nearest')
@@ -422,6 +424,7 @@ def validate(val_loader, model, criterion, epoch=0, cam_extractor=None, cam_infe
             else:
                 gradcam_result = att_map
             #
+            print(att_map,shape, gradcam_result.shape)
             vis_table_val.add_data(input_img, wandb.Image(c_map(att_map)), wandb.Image(c_map(gradcam_result)))
             if n==3: 
                 break
