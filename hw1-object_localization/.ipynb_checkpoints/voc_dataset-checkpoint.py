@@ -165,7 +165,9 @@ class VOCDataset(Dataset):
         conf_rank = np.argsort(self.roi_data['boxScores'][0][index].flatten())[::-1]
         conf_rank = conf_rank[:min(self.top_n, len(conf_rank))]
         proposals = self.roi_data['boxes'][0, index][conf_rank]
-        proposals = np.apply_along_axis(lambda x: np.array([x[0]/height, x[1]/width, x[2]/height, x[3]/width]), 1, proposals)
+        proposals = np.apply_along_axis(lambda x: np.array([x[1]/width, x[0]/height, 
+                                                            x[3]/width, x[2]/height]), 
+                                        1, proposals)
 
         ret = {}
         ret['image'] = img
