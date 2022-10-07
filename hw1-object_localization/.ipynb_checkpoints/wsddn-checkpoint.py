@@ -62,16 +62,20 @@ class WSDDN(nn.Module):
             nn.Linear(in_features=4096, out_features=20)
         )
         # loss
-        self.criterion = nn.BCELoss(size_average=True).cuda() # None
+        self.criterion = nn.BCELoss(reduction='sum').cuda()  # None
         #self.criterion = nn.BCELoss(size_average=True).cuda() # None
         #self.criterion = nn.MultiLabelSoftMarginLoss(size_average=True).cuda() # None
+        # load weight
         if pretrained:
             load_weights = model_zoo.load_url(model_urls['alexnet'])
             for item_name in self.features.state_dict().keys():
                 self.features.state_dict()[item_name] = load_weights['features.'+item_name]
-        for layer in self.classifier:
-            if type(layer) == nn.Conv2d:
-                nn.init.xavier_uniform(layer.weight)
+        # Set require grad and initialize
+        for m in [self.classifier, self.score_out, self.bbox_out]:
+            for layer in m:
+                layer.requires_grad = True
+                if hasattr(layer,'weight'):
+                    nn.init.xavier_uniform(layer.weight)
 
     @property
     def loss(self):
@@ -103,7 +107,7 @@ class WSDDN(nn.Module):
         except:
             print(f"Debug size: rois:{[len(r) for r in rois]}:{pooled_shape} \nrois_feat:{rois_feat.size()}\nbox_prob:{box_prob.size()}")
         if self.training:
-            self.cross_entropy = self.build_loss(box_prob, gt_vec)
+            self.cross_entropy = self.build_loss(box_prob, gt_vec.cuda())
         return box_prob
 
     def build_loss(self, cls_prob, label_vec):
@@ -118,8 +122,7 @@ class WSDDN(nn.Module):
         # Checkout forward() to see how it is called
         cls_prob = torch.sum(cls_prob, dim=1)    #(1, 20)
         cls_prob = torch.clamp(cls_prob, 0.0, 1.0)
-        print("Loss compute:",cls_prob.size(), label_vec.size())
-        return self.criterion(cls_prob.cpu(), label_vec)
+        return self.criterion(cls_prob, label_vec.cuda())
 
 class FC(nn.Module):
     def __init__(self, in_features, out_features, activate=True):
