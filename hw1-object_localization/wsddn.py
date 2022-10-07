@@ -62,9 +62,8 @@ class WSDDN(nn.Module):
             nn.Linear(in_features=4096, out_features=20)
         )
         # loss
-        self.criterion = nn.BCELoss(reduction='sum').cuda()  # None
-        #self.criterion = nn.BCELoss(size_average=True).cuda() # None
-        #self.criterion = nn.MultiLabelSoftMarginLoss(size_average=True).cuda() # None
+        self.criterion = nn.BCELoss(reduction='sum').cuda() # None
+        #self.criterion = nn.BCEWithLogitsLoss(reduction='sum').cuda() # None
         # load weight
         if pretrained:
             load_weights = model_zoo.load_url(model_urls['alexnet'])
@@ -74,8 +73,8 @@ class WSDDN(nn.Module):
         for m in [self.classifier, self.score_out, self.bbox_out]:
             for layer in m:
                 layer.requires_grad = True
-                if hasattr(layer,'weight'):
-                    nn.init.xavier_uniform(layer.weight)
+                # if hasattr(layer,'weight'):
+                #     nn.init.xavier_uniform(layer.weight)
 
     @property
     def loss(self):
@@ -92,18 +91,18 @@ class WSDDN(nn.Module):
         #TODO: Use im_data and rois as input
         rois_pooled = self.roi_pool(self.features(im_data), rois) 
         # -> Tensor[K, C, output_size[0], output_size[1]]   # (N, 256, 6, 6)
-        pooled_shape = rois_pooled.size()
-        rois_pooled = rois_pooled.view(len(rois_pooled),-1).unsqueeze(0)
-        
-        # (256*1=256, 9216)
-        rois_feat = self.classifier(rois_pooled)   # (N, 4096)
+        self.pooled_shape = rois_pooled.size()
+        rois_pooled = rois_pooled.view(len(rois_pooled),-1)
+        # (b=300, 9216)
+        rois_feat = self.classifier(rois_pooled)   # (300, 4096)
         assert torch.sum(torch.isnan(rois_feat))==0,f"ROI feat problem: {rois_pooled.size()}"
+        # score/bbox: out (300, 20)
         class_score = F.softmax(self.score_out(rois_feat), dim=1)     
         # (300 =300*1, 20)
         detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)     # (300 =300*1, 20)
         # compute cls_prob which are N_roi X 20 scores
         try:
-            box_prob = class_score * detect_score   # (300 =300*1, 20)
+            box_prob = class_score * detect_score   # (N, 300 =300*1, 20)
         except:
             print(f"Debug size: rois:{[len(r) for r in rois]}:{pooled_shape} \nrois_feat:{rois_feat.size()}\nbox_prob:{box_prob.size()}")
         if self.training:
@@ -120,7 +119,7 @@ class WSDDN(nn.Module):
         # TODO (Q2.1): Compute the appropriate loss using the cls_prob
         # that is the output of forward()
         # Checkout forward() to see how it is called
-        cls_prob = torch.sum(cls_prob, dim=1)    #(1, 20)
+        cls_prob = torch.sum(cls_prob, dim=0).unsqueeze(0)    #(1, 20)
         cls_prob = torch.clamp(cls_prob, 0.0, 1.0)
         return self.criterion(cls_prob, label_vec.cuda())
 
