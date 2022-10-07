@@ -45,7 +45,7 @@ class WSDDN(nn.Module):
             #nn.ReLU()
         )
 
-        self.roi_pool = RoIPool((6, 6), spatial_scale=31)
+        self.roi_pool = RoIPool((6, 6), spatial_scale=1.0/16)
         
         self.classifier = nn.Sequential(
             nn.Linear(in_features=9216, out_features=4096),
@@ -62,7 +62,8 @@ class WSDDN(nn.Module):
             nn.Linear(in_features=4096, out_features=20)
         )
         # loss
-        self.criterion = nn.BCELoss(reduction='sum').cuda() # None
+        self.criterion = nn.BCELoss(size_average=True).cuda() # None
+        #self.criterion = nn.BCELoss(size_average=True).cuda() # None
         #self.criterion = nn.MultiLabelSoftMarginLoss(size_average=True).cuda() # None
         if pretrained:
             load_weights = model_zoo.load_url(model_urls['alexnet'])
@@ -88,9 +89,11 @@ class WSDDN(nn.Module):
         rois_pooled = self.roi_pool(self.features(im_data), rois) 
         # -> Tensor[K, C, output_size[0], output_size[1]]   # (N, 256, 6, 6)
         pooled_shape = rois_pooled.size()
-        rois_pooled = rois_pooled.view(len(rois_pooled),-1)    
+        rois_pooled = rois_pooled.view(len(rois_pooled),-1).unsqueeze(0)
+        
         # (256*1=256, 9216)
         rois_feat = self.classifier(rois_pooled)   # (N, 4096)
+        assert torch.sum(torch.isnan(rois_feat))==0,f"ROI feat problem: {rois_pooled.size()}"
         class_score = F.softmax(self.score_out(rois_feat), dim=1)     
         # (300 =300*1, 20)
         detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)     # (300 =300*1, 20)
@@ -113,10 +116,10 @@ class WSDDN(nn.Module):
         # TODO (Q2.1): Compute the appropriate loss using the cls_prob
         # that is the output of forward()
         # Checkout forward() to see how it is called
-        cls_prob = torch.sum(cls_prob, dim=0).unsqueeze(0)    #(1, 20)
-        cls_prob = torch.clamp(cls_prob, min=0.0, max=1.0)
-        label_vec = label_vec.view(-1, self.n_classes)
-        return self.criterion(label_vec.cuda(), cls_prob)
+        cls_prob = torch.sum(cls_prob, dim=1)    #(1, 20)
+        cls_prob = torch.clamp(cls_prob, 0.0, 1.0)
+        print("Loss compute:",cls_prob.size(), label_vec.size())
+        return self.criterion(cls_prob.cpu(), label_vec)
 
 class FC(nn.Module):
     def __init__(self, in_features, out_features, activate=True):
