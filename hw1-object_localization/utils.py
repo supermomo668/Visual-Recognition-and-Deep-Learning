@@ -131,7 +131,7 @@ def tensor_to_PIL(image):
 
 def get_box_data(classes, bbox_coordinates):
     """
-    classes : tensor containing class predictions/gt
+    classes : tensor containing class predictions/gt (class)
     bbox_coordinates: tensor containing [[xmin0, ymin0, xmax0, ymax0], [xmin1, ymin1, ...]] (Nx4)
 
     return list of boxes as expected by the wandb bbox plotter

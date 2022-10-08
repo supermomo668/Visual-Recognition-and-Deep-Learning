@@ -98,6 +98,8 @@ def metric1(output, target):
     mean_ap = sklearn.metrics.average_precision_score(target[:,feat_considered], output[:,feat_considered], average='samples')
     return mean_ap    #[0]
 
+global pred_class_bbox, box_scores, pred_class_idx
+
 def calculate_map(roi_bboxes, box_scores,  gt_classes, gt_bboxes, n_classes=20):
     """
     Calculate the mAP for classification.
@@ -115,29 +117,32 @@ def calculate_map(roi_bboxes, box_scores,  gt_classes, gt_bboxes, n_classes=20):
     filtered_bboxes = []
     cls_labels = []
     
-    for class_num in range(20):   # (per class)
+    for class_num in range(20):   
+        # (Iterate per class)
+        # filter by class to evaluate individually
         gt_class_idx = np.where(np.asarray(gt_classes)==class_num)[0]
         pred_class_idx = np.where(np.argmax(np.asarray(roi_bboxes), axis=1)==class_num)[0]
         if len(pred_class_idx)==0 or len(gt_class_idx)==0:
+            # if no lables, remain np.nan
             continue
+        # Filter selected boxes by NMS here 
         # [ n_selected, 4];   # [n_selected, 4]
         pred_class_bbox, gt_class_bbox = pred_boxes[pred_class_idx], gt_boxes[gt_class_idx]
         bboxes, conf_scores = nms(pred_class_bbox, box_scores[pred_class_idx])
-        # nms_idx = nms(torch.as_tensor(pred_class_bbox,dtype=torch.float32),
-        #               torch.as_tensor(box_scores[pred_class_idx, class_num],dtype=torch.float32), 0.2)
-        #bboxes, conf_scores = pred_class_bbox[nms_idx], box_scores[pred_class_idx, class_num][nms_idx]
+        
         [filtered_bboxes.append(b) for b in  bboxes]
         cls_labels += [class_num]*len(bboxes)
         # iterate each bbox to gt bbox
         class_iou = []
         for i, pred_box in enumerate(pred_class_bbox):
+            # compare each prediction to gt box, take maximum IOU 
             class_iou.append(np.max([iou(pred_box, gt_box) for gt_box in gt_class_bbox]))            
+        # get mean AP for the class averaging bboxes
         per_class_iou[class_num] = np.array(class_iou).mean()
     if len(filtered_bboxes)>0:
         filtered_bboxes= np.stack(filtered_bboxes)
     #print(f"Number of bbox:{len(filtered_bboxes)},{filtered_bboxes}")
     return per_class_iou, (filtered_bboxes, cls_labels)
-
 
 def test_model(model, val_loader=None, epoch=0,thresh=0.05):
     """
@@ -175,12 +180,8 @@ def test_model(model, val_loader=None, epoch=0,thresh=0.05):
             batch_class_ap.append(ap_by_class)
             running_mean_ap = np.nanmean(np.stack(batch_class_ap), axis=0)
             class_ap_table.add_data(*running_mean_ap)
+            wandb.log({f"val/{epoch}/Visuals": vis_table})
             # TODO (Q2.3): visualize bounding box predictions when required
-            if len(pred_boxes)>0:
-                print(f"ap by class:{ap_by_class}")
-                print(f"Pred boxes:{pred_boxes},{labels}")
-                print(f"wandb:{get_box_data(labels, pred_boxes)}")
-
             if i%args.disp_interval==0:
                 for n, im in enumerate(image):
                     gtbbox_img = wandb.Image(im, boxes={
@@ -196,12 +197,12 @@ def test_model(model, val_loader=None, epoch=0,thresh=0.05):
                         },
                     })
                     vis_table.add_data(gtbbox_img, predbbox_img, np.nanmean(running_mean_ap)) 
+        
         wandb.log({f"val/{epoch}/Visuals": vis_table})
         wandb.log({f"val/{epoch}/Class mAP": class_ap_table})
-    return np.nanmean(np.stack(batch_class_ap), axis=0)
+    # return [batchx20] class map vector with nan if not available
+    return batch_class_ap
             
-
-
 def train_model(model, train_loader=None, val_loader=None, optimizer=None, args=None):
     """
     Trains the network, runs evaluation and visualizes the detections
@@ -210,11 +211,11 @@ def train_model(model, train_loader=None, val_loader=None, optimizer=None, args=
     train_loss = 0
     step_cnt = 0
     class_id_to_label = dict(enumerate(dataset.CLASS_NAMES))
-    class_ap_table = wandb.Table(columns=[str(c) for c in np.arange(len(dataset.CLASS_NAMES))])
-    vis_table = wandb.Table(columns=["image", "class AP scores"])
+    vis_table = wandb.Table(columns=["image"]+dataset.CLASS_NAMES)
+    all_batch_ap = []
     for epoch in range(args.epochs):
         for i, data in enumerate(train_loader):
-            debug=True if (epoch==0 and i==0) else False
+            debug=True if (epoch<=3 and i<=1) else False
             # TODO (Q2.2): get one batch and perform forward pass
             # one batch = data for one image
             image = data['image']
@@ -223,35 +224,38 @@ def train_model(model, train_loader=None, val_loader=None, optimizer=None, args=
             rois = data['rois']
             gt_boxes = data['gt_boxes']
             gt_class = data['gt_classes']
-            if np.any([len(r)!= 300 for r in rois]):
+            if len(rois[0])!=300:
+                print("Roi length rejected:", len(rois[0]))
                 continue
-            print(np.any([len(r)!= 300 for r in rois]), [len(r) for r in rois])
             # TODO (Q2.2): perform forward pass
             # take care that proposal values should be in pixels
             # Convert inputs to cuda if training on GPU
-            if debug: print(f"Input shapes: Image {image.size()}; ROIs:{[len(r) for r in rois]}; targets:{target.size()}")
-            cls_prob = model(image, rois, target)   # (N, 300, 20)
-            if debug: print(f"Output shape: {cls_prob.size()}")
+            if debug: print(f"Input shapes: Image {image.size()}; ROIs:{[r.size() for r in rois]}; targets:{target.size()}")
+            box_prob = model(image, rois, target)   # (N, 300, 20)
+            if debug: print(f"Output shape: {box_prob.size(), torch.sum(torch.isnan(box_prob))}")
             # backward pass and update
+            if debug: print(f"Compute loss:\n{torch.mean(box_prob)}\n{torch.mean(target)}")
             loss = model.loss
-            train_loss += loss.item()
-            step_cnt += 1
+            
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             
+            train_loss += loss.item()
+            step_cnt += 1
             # measure metrics and record loss
-            m1 = metric1(torch.sum(cls_prob,dim=1).cpu(), target.cpu())
+            #m1 = metric1(torch.sum(box_prob,dim=1).cpu(), target.cpu())
             wandb.log(
-                {'train/loss':loss, 'train/metric1': m1} #,  'train/metric2': m2,}
+                {'train/loss':train_loss/step_cnt}, #'train/metric1': m1} #,  'train/metric2': m2,}
             )
             # TODO (Q2.2): evaluate the model every N iterations (N defined in handout)
             # Add wandb logging wherever necessary
             if i % args.val_interval == 0 and iter != 0:
                 print("Evaluating Model.")
                 model.eval()
-                ap = test_model(model, val_loader)
+                ap = test_model(model, val_loader, epoch=epoch)
+                all_batch_ap.apend(ap)
                 model.train()
             
             # TODO (Q2.4): Perform all visualizations here
@@ -262,12 +266,11 @@ def train_model(model, train_loader=None, val_loader=None, optimizer=None, args=
                       epoch,
                       i,
                       len(train_loader),
-                      train_loss=train_loss,
+                      train_loss=train_loss/step_cnt,
+                      #metric1=m1,
                       # ap=ap,
                   )
                 )
-                #logger.model_param_zhisto_summary(model=net, step=step)
-                pass
                 #
             if i%args.disp_interval:
                 for n, im in enumerate(image):
@@ -277,17 +280,14 @@ def train_model(model, train_loader=None, val_loader=None, optimizer=None, args=
                             "class_labels": class_id_to_label,       
                         },
                     })
-                    # predbbox_img = wandb.Image(im, boxes={
-                    #     "predictions": {
-                    #     "box_data": get_box_data(img_info[n]['pred_boxes'], img_info[n]['pred_boxes']),
-                    #     "class_labels": class_id_to_label,       
-                    #     },
-                    # })
-                    vis_table.add_data(input_img, ap)
-                wandb.log({"train/Visuals": vis_table})
+                    vis_table.add_data(input_img, *ap)
+        wandb.log({f"train/{epoch}/Visuals": vis_table})
+        wandb.log(f"train/epoch_Mean AP", {k:v for k,v in zip(dataset.CLASS_NAMES, np.nanmean(all_batch_ap, axis=0))})
                 # wandb.log({"AP by Class": class_ap_table})
-    
     # TODO (Q2.4): Plot class-wise APs
+    all_ap = np.concatenate(all_batch_ap)
+    # plotted by the wandb by passing in array
+    return all_ap
     
 
 
