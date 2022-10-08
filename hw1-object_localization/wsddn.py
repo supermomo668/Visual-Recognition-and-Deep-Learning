@@ -45,7 +45,7 @@ class WSDDN(nn.Module):
             #nn.ReLU()
         )
 
-        self.roi_pool = RoIPool((6, 6), spatial_scale=1.0/16)
+        self.roi_pool = RoIPool((6, 6), spatial_scale=31.0)
         
         self.classifier = nn.Sequential(
             nn.Linear(in_features=9216, out_features=4096),
@@ -70,11 +70,11 @@ class WSDDN(nn.Module):
             for item_name in self.features.state_dict().keys():
                 self.features.state_dict()[item_name] = load_weights['features.'+item_name]
         # Set require grad and initialize
-        for m in [self.classifier, self.score_out, self.bbox_out]:
-            for layer in m:
-                layer.requires_grad = True
-                # if hasattr(layer,'weight'):
-                #     nn.init.xavier_uniform(layer.weight)
+        # for m in [self.classifier, self.score_out, self.bbox_out]:
+        #     for layer in m:
+        #         layer.requires_grad = True
+        #         if hasattr(layer,'weight'):
+        #             nn.init.xavier_uniform(layer.weight)
 
     @property
     def loss(self):
@@ -86,7 +86,7 @@ class WSDDN(nn.Module):
                 gt_vec=None,
                 ):
         # TODO (Q2.1): Use image and rois as input
-        im_data = Variable(image.type(torch.FloatTensor)).cuda()
+        im_data = image.type(torch.FloatTensor).cuda()
         rois = [roi.type(torch.FloatTensor).cuda() for roi in rois]
         #TODO: Use im_data and rois as input
         rois_pooled = self.roi_pool(self.features(im_data), rois) 
@@ -95,11 +95,11 @@ class WSDDN(nn.Module):
         rois_pooled = rois_pooled.view(len(rois_pooled),-1)
         # (b=300, 9216)
         rois_feat = self.classifier(rois_pooled)   # (300, 4096)
-        assert torch.sum(torch.isnan(rois_feat))==0,f"ROI feat problem: {rois_pooled.size()}"
+        assert torch.sum(torch.isnan(rois_feat))==0, f"ROI feat problem: {rois_pooled.size()}"
         # score/bbox: out (300, 20)
-        class_score = F.softmax(self.score_out(rois_feat), dim=1)     
+        class_score = F.softmax(self.score_out(rois_feat), dim=0)     
         # (300 =300*1, 20)
-        detect_score = F.softmax(self.bbox_out(rois_feat), dim=0)     # (300 =300*1, 20)
+        detect_score = F.softmax(self.bbox_out(rois_feat), dim=1)     # (300 =300*1, 20)
         # compute cls_prob which are N_roi X 20 scores
         try:
             box_prob = class_score * detect_score   # (N, 300 =300*1, 20)
