@@ -4,3 +4,4 @@ wandb/
 .
 *.pkl
 *__pycache__
+.*
