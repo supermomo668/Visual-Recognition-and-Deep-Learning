@@ -1,6 +1,7 @@
 import torch
 from cleanfid import fid
 from matplotlib import pyplot as plt
+from torchvision.utils import save_image
 
 
 def save_plot(x, y, xlabel, ylabel, title, filename):
@@ -40,5 +41,5 @@ def interpolate_latent_space(gen, path):
     z = torch.randn(n_samples, 128).cuda()   # (100, 128)
     z[:,0] = z[:,1] = torch.linspace(-1, 1, n_samples)
     gen_im = gen(z)
-    torchvision.utils.save_image(gen_im, path)
+    save_image(gen_im, path)
     return gen_im
