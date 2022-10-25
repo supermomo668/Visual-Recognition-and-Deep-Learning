@@ -6,8 +6,10 @@ from utils import get_fid, interpolate_latent_space, save_plot
 from torchvision import transforms
 from torchvision.utils import save_image
 from PIL import Image
+import matplotlib.pyplot as plt
 from torchvision.datasets import VisionDataset
 
+proj_path = '/content/drive/MyDrive/S4 - 16824 VLR/generative-modeling'
 
 def build_transforms():
     # TODO 1.2: Add two transforms:
@@ -77,7 +79,7 @@ def train_model(
     torch.backends.cudnn.benchmark = True
     ds_transforms = build_transforms()
     train_loader = torch.utils.data.DataLoader(
-        Dataset(root="datasets/CUB_200_2011_32", transform=ds_transforms),
+        Dataset(root=proj_path+"datasets/CUB_200_2011_32", transform=ds_transforms),
         batch_size=batch_size,
         shuffle=True,
         num_workers=4,
@@ -106,7 +108,7 @@ def train_model(
                 # 2. Compute discriminator output on the train batch.
                 # 3. Compute the discriminator output on the generated data.
                 gen_batch = gen(n_samples=batch_size)   # [N, 3, 64, 64]
-                discrim_fake = disc(gen_train)
+                discrim_fake = disc(gen_batch)
                 discrim_real = disc(train_batch)
 
                 # TODO: 1.5 Compute the interpolated batch and run the discriminator on it.
@@ -145,7 +147,7 @@ def train_model(
                 with torch.no_grad():
                     with torch.cuda.amp.autocast():
                         # TODO 1.2: Generate samples using the generator, make sure they lie in the range [0, 1].
-                        generated_samples = gen(n_samples)
+                        generated_samples = gen(batch_size)
                     #
                     save_image(
                         generated_samples.data.float(),
@@ -178,7 +180,7 @@ def train_model(
                     interpolate_latent_space(
                         gen, prefix + "interpolations_{}.png".format(iters)
                     )
-                torchvision.utils.save_image(generated_samples, prefix+f"generated_im_logs{iters}.jpg")
+                save_image(generated_samples, prefix+f"generated_im_logs{iters}.jpg")
                 vislogger_train.add_data(iters, wandb.Image(plt.imread(prefix+f"generated_im_logs{iters}.jpg")), 
                                          wandb.Image(plt.imread(prefix + f"interpolations_{iters}.png")))
             wandb.log({f"val/Visuals": vislogger_train})
