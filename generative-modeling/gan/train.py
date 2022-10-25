@@ -105,7 +105,7 @@ def train_model(
                 # 1. Compute generator output -> the number of samples must match the batch size.
                 # 2. Compute discriminator output on the train batch.
                 # 3. Compute the discriminator output on the generated data.
-                gen_train = gen(n_samples=batch_size)   # [N, 3, 64, 64]
+                gen_batch = gen(n_samples=batch_size)   # [N, 3, 64, 64]
                 discrim_fake = disc(gen_train)
                 discrim_real = disc(train_batch)
 
@@ -114,8 +114,8 @@ def train_model(
                 # interpolated data = eps * fake_data + (1-eps) * real_data
                 #discrim_interp = interpolate_latent_space(gen, prefix+f'interpolated-iter{iters}batch{i}.jpg')
                 
-                epsilon = torch.rand(len(batch_size), 1, 1, 1, device=device, requires_grad=True)   # (*, 1,1,1)
-                interp = real * epsilon + fake * (1 - epsilon)
+                epsilon = torch.rand(len(batch_size), 1, 1, 1, device='cuda', requires_grad=True)   # (*, 1,1,1)
+                interp = train_batch * epsilon + gen_batch * (1 - epsilon)
                 discrim_interp = disc(interp)   
                 discriminator_loss = disc_loss_fn(
                     discrim_real, discrim_fake, discrim_interp, interp, lamb
