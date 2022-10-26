@@ -3,6 +3,9 @@ import torch.jit as jit
 import torch.nn as nn
 import torch.nn.functional as F
 
+import os
+os.environ["PYTORCH_JIT"] = "0"
+
 class UpSampleConv2D(jit.ScriptModule):
     # TODO 1.1: Implement nearest neighbor upsampling + conv layer
     def __init__(
@@ -82,10 +85,10 @@ class ResBlockUp(jit.ScriptModule):
         super(ResBlockUp, self).__init__()
         self.layers = nn.Sequential(
             nn.BatchNorm2d(input_channels), 
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=kernel_size, stride=1, padding=1),
             nn.BatchNorm2d(n_filters), 
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
         )
         self.residual = UpSampleConv2D(input_channels=n_filters, n_filters=n_filters, kernel_size=3, padding=1)
         self.shortcut = UpSampleConv2D(input_channels=input_channels, n_filters=n_filters, kernel_size=1)
@@ -120,9 +123,9 @@ class ResBlockDown(jit.ScriptModule):
     def __init__(self, input_channels, kernel_size=3, n_filters=128):
         super(ResBlockDown, self).__init__()
         self.layer = nn.Sequential(
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=kernel_size, stride=1, padding=1),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
         )
         self.residual = DownSampleConv2D(input_channels=n_filters, n_filters=n_filters, kernel_size=3, padding=1)
         self.shortcut = DownSampleConv2D(input_channels=input_channels, n_filters=n_filters, kernel_size=1)
@@ -229,9 +232,8 @@ class Generator(jit.ScriptModule):
             ResBlockUp(in_feat),
             ResBlockUp(in_feat),
             ResBlockUp(in_feat),
-            ResBlockUp(in_feat),
             nn.BatchNorm2d(in_feat),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Conv2d(in_feat, out_channels=3, kernel_size=1),
             nn.Tanh()
         )
@@ -314,7 +316,7 @@ class Discriminator(jit.ScriptModule):
             ResBlockDown(n_feat, n_filters=n_feat),
             ResBlock(n_feat, n_filters=n_feat),
             ResBlock(n_feat, n_filters=n_feat),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
         )
         self.dense_out = nn.Linear(in_features=128, out_features=1, bias=True)
 
@@ -325,4 +327,4 @@ class Discriminator(jit.ScriptModule):
         x = self.layers(x)   # (*, 128, 8, 8)
         x = torch.sum(x.view(x.size(0), x.size(1),-1), dim=-1)
         x = self.dense_out(x.view(x.size(0), -1))
-        return nn.functional.sigmoid(x)
+        return x

@@ -9,7 +9,8 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from torchvision.datasets import VisionDataset
 
-proj_path = '/content/drive/MyDrive/S4 - 16824 VLR/generative-modeling'
+import pathlib
+proj_path = pathlib.Path('./')
 
 def build_transforms():
     # TODO 1.2: Add two transforms:
@@ -32,10 +33,10 @@ def get_optimizers_and_schedulers(gen, disc):
     disc = disc.cuda()
     optim_discriminator = torch.optim.Adam(disc.parameters(), lr=lr,)
     scheduler_discriminator = torch.optim.lr_scheduler.LinearLR(
-        optim_discriminator, start_factor=1, end_factor=0, total_iters=int(5e5), last_epoch=- 1, verbose=False)
+        optim_discriminator, start_factor=1, end_factor=0, total_iters=int(5e5), last_epoch=-1, verbose=False)
     optim_generator = torch.optim.Adam(gen.parameters(), lr=lr)
     scheduler_generator = scheduler_discriminator = torch.optim.lr_scheduler.LinearLR(
-        optim_generator, start_factor=1, end_factor=0, total_iters=int(1e5), last_epoch=- 1, verbose=False)
+        optim_generator, start_factor=1, end_factor=0, total_iters=int(1e5), last_epoch=-1, verbose=False)
     return (
         optim_discriminator,
         scheduler_discriminator,
@@ -72,42 +73,44 @@ def train_model(
     log_period=10000,
     wandb_logging = False
 ):
-    wandb_logging = True  # use flags, wandb is not convenient for debugging
     if wandb_logging:
-        wandb.init(project="vlr-hw2", reinit=True)
-
+        wandb.init(project="vlr-hw2", reinit=False)
+    datadir_exist = os.path.exists(prefix+"datasets/CUB_200_2011_32")
+    print(f"data dir exist:{datadir_exist}")
     torch.backends.cudnn.benchmark = True
     ds_transforms = build_transforms()
     train_loader = torch.utils.data.DataLoader(
-        Dataset(root=proj_path+"datasets/CUB_200_2011_32", transform=ds_transforms),
+        Dataset(root=prefix+"datasets/CUB_200_2011_32", transform=ds_transforms),
         batch_size=batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=1,
         pin_memory=True,
     )
-
     (
         optim_discriminator,
         scheduler_discriminator,
         optim_generator,
         scheduler_generator,
     ) = get_optimizers_and_schedulers(gen, disc)
+    #
     scaler = torch.cuda.amp.GradScaler()
     #
     iters = 0
     fids_list = []
     iters_list = []
-    #
+
     vislogger_train = wandb.Table(columns=["Iter", "Generated Image",  "Interpolation"])
     while iters < num_iterations:
+        print(f"Epoch after iters:{iters}")
         for i, train_batch in enumerate(train_loader):
             with torch.cuda.amp.autocast():
                 train_batch = train_batch.cuda()
+                bs = len(train_batch)
                 # TODO 1.2: compute generator outputs and discriminator outputs
                 # 1. Compute generator output -> the number of samples must match the batch size.
                 # 2. Compute discriminator output on the train batch.
                 # 3. Compute the discriminator output on the generated data.
-                gen_batch = gen(n_samples=batch_size)   # [N, 3, 64, 64]
+                gen_batch = gen(n_samples=bs)   # [N, 3, 64, 64]
                 discrim_fake = disc(gen_batch)
                 discrim_real = disc(train_batch)
 
@@ -115,8 +118,8 @@ def train_model(
                 # To compute interpolated data, draw eps ~ Uniform(0, 1)
                 # interpolated data = eps * fake_data + (1-eps) * real_data
                 #discrim_interp = interpolate_latent_space(gen, prefix+f'interpolated-iter{iters}batch{i}.jpg')
-                
-                epsilon = torch.rand(len(batch_size), 1, 1, 1, device='cuda', requires_grad=True)   # (*, 1,1,1)
+
+                epsilon = torch.rand((bs,)+(1,)*3, device='cuda', requires_grad=True)    # (*, 1,1,1)
                 interp = train_batch * epsilon + gen_batch * (1 - epsilon)
                 discrim_interp = disc(interp)   
                 discriminator_loss = disc_loss_fn(
@@ -125,7 +128,7 @@ def train_model(
                 wandb.log({'train/disc. Loss': discriminator_loss})
             ## 
             optim_discriminator.zero_grad(set_to_none=True)
-            scaler.scale(discriminator_loss).backward()
+            scaler.scale(discriminator_loss).backward(retain_graph=True)
             scaler.step(optim_discriminator)
             scheduler_discriminator.step()
 
@@ -134,20 +137,20 @@ def train_model(
                     # TODO 1.2: Compute samples and evaluate under discriminator.
                     gen_val = gen(n_samples=batch_size)
                     discrim_fake_val = disc(gen_val)
-                    generator_loss = gen_loss_fn(discrim_fake)
-                wandb.log({'train/gen. Loss': discriminator_loss})
+                    generator_loss = gen_loss_fn(discrim_fake_val)
+                wandb.log({'train/gen. Loss': generator_loss})
                 ##
                 optim_generator.zero_grad(set_to_none=True)
                 scaler.scale(generator_loss).backward()
                 scaler.step(optim_generator)
                 scheduler_generator.step()
-            
-                
+
             if iters % log_period == 0 and iters != 0:
+                fid_bs = batch_size   # 256
                 with torch.no_grad():
                     with torch.cuda.amp.autocast():
                         # TODO 1.2: Generate samples using the generator, make sure they lie in the range [0, 1].
-                        generated_samples = gen(batch_size)
+                        generated_samples = torch.clamp(gen(n_samples=100), 0, 1)
                     #
                     save_image(
                         generated_samples.data.float(),
@@ -161,7 +164,7 @@ def train_model(
                         dataset_name="cub",
                         dataset_resolution=32,
                         z_dimension=128,
-                        batch_size=256,
+                        batch_size=fid_bs,
                         num_gen=10_000,
                     )
                     wandb.log({'val/FID': fid})
@@ -180,20 +183,23 @@ def train_model(
                     interpolate_latent_space(
                         gen, prefix + "interpolations_{}.png".format(iters)
                     )
-                save_image(generated_samples, prefix+f"generated_im_logs{iters}.jpg")
-                vislogger_train.add_data(iters, wandb.Image(plt.imread(prefix+f"generated_im_logs{iters}.jpg")), 
-                                         wandb.Image(plt.imread(prefix + f"interpolations_{iters}.png")))
+
+                vislogger_train.add_data(iters, 
+                                         wandb.Image(Image.open(prefix + "samples_{}.png".format(iters))),
+                                         wandb.Image(Image.open(prefix + "interpolations_{}.png".format(iters)))
+                                        )
             wandb.log({f"val/Visuals": vislogger_train})
             ##
             scaler.update()
             iters += 1
-            
+    print("Training Done.")
     fid = get_fid(
         gen,
         dataset_name="cub",
         dataset_resolution=32,
         z_dimension=128,
-        batch_size=256,
+        batch_size=fid_bs,
         num_gen=50_000,
     )
+    wandb.log({f"val/FinalFID": fid})
     print(f"Final FID (Full 50K): {fid}")

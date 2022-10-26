@@ -24,7 +24,7 @@ class Encoder(nn.Module):
         """
         layers = []
         in_filters = input_shape[0]
-        for n_filters in [32, 64, 128, 256]:
+        for n_filters in np.power(2, np.linspace(5, 8, num=4)).astype(int):
             layers.append(nn.Conv2d(in_channels=in_filters, out_channels=n_filters, kernel_size=3, stride=1, padding=1)),
             layers.append(nn.ReLU(inplace=True))
             in_filters=n_filters
@@ -32,24 +32,30 @@ class Encoder(nn.Module):
         self.conv_out_dim = input_shape[1] // 8 * input_shape[2] // 8 * 256
 
         # TODO 2.1.1: fill in self.fc, such that output dimension is self.latent_dim
-        self.fc = ...
+        self.fc = nn.Linear(self.conv_out_dim, latent_dim)
 
     def forward(self, x):
         # TODO 2.1.1 : forward pass through the network, output should be of dimension : self.latent_dim
-        pass
-
+        x = self.convs(x)
+        x = x.view(len(x), -1)
+        return self.fc(x)
 
 class VAEEncoder(Encoder):
     def __init__(self, input_shape, latent_dim):
         super().__init__(input_shape, latent_dim)
         # TODO 2.2.1: fill in self.fc, such that output dimension is 2*self.latent_dim
-        self.fc = ...
-    
+        self.fc = nn.Sequential(
+            self.convs,
+            self.fc,
+            nn.Linear(latent_dim, 2*latent_dim)
+        )
+        
     def forward(self, x):
         # TODO 2.2.1: forward pass through the network.
         # should return a tuple of 2 tensors, each of dimension self.latent_dim
-        pass
-
+        z_out = self.fc(x)
+        z_out = z_out.view((len(x), 2, -1))        
+        return (z_out[...,0], z_out[..., 1])
 
 class Decoder(nn.Module):
     def __init__(self, latent_dim, output_shape):
@@ -58,7 +64,7 @@ class Decoder(nn.Module):
         self.output_shape = output_shape
 
         #TODO 2.1.1: fill in self.base_size
-        self.base_size = ...
+        self.base_size = (3, 4, 4)
         self.fc = nn.Linear(latent_dim, np.prod(self.base_size))
         
         """
@@ -74,11 +80,17 @@ class Decoder(nn.Module):
                 (7): Conv2d(32, 3, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             )
         """
-        self.deconvs = ...
+        layers = []
+        in_filters = 2**7
+        for n_filters in np.power(2, np.linspace(8-1, 5, num=4-1)).astype(int)+[3]:
+            layers.append(nn.Conv2d(in_channels=in_filters, out_channels=n_filters, kernel_size=3, stride=1, padding=1)),
+            layers.append(nn.ReLU(inplace=True))
+            in_filters=n_filters
+        self.deconvs = nn.Sequential(*layers)
 
     def forward(self, z):
         # TODO 2.1.1: forward pass through the network, first through self.fc, then self.deconvs.
-        pass
+        return self.deconvs(z)
 
 
 class AEModel(nn.Module):
