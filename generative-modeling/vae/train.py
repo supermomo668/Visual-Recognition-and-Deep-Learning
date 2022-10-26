@@ -126,14 +126,39 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
 
 
 if __name__ == '__main__':
-    pass
+    import argparse 
+    def parse_a2c_arguments(params):
+        # Command-line flags are defined here.
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--latent_size', dest='latent_size', type=int,
+                            default=1024, help="Size of latent space")   # 'LunarLander-v2'
+        parser.add_argument('--num_epochs', dest='num_epochs', type=int,
+                            default=20, help="Size of latent space")   # 'LunarLander-v2'
+        parser.add_argument('--loss_mode', dest='loss_mode', type=str,
+                            default='ae', help="Size of latent space")   # 'LunarLander-v2'
+        parser.add_argument('--log_dir', dest='log_dir', type=str,
+                            default='ae_latent1024', help="directory")
+        # ['ae_latent1024','vae_latent1024', 'vae_latent1024_beta_constant0.8','vae_latent1024_beta_linear1']
+        parser.add_argument('--beta_mode', dest='beta_mode', type=str,
+                            default='constant', help="directorye")   
+        # ['constant', 'linear']
+        parser.add_argument('--target_beta_val', dest='target_beta_val', type=float,
+                            default=0.8, help="final beta")   # 
+        # [0.8. 1]
+        return parser.parse_known_args()[0]  #parser.parse_args()
+    args = parse_a2c_arguments()
     #TODO: Experiments to run : 
     #2.1 - Auto-Encoder
     #Run for latent_sizes 16, 128 and 1024
     #main('ae_latent1024', loss_mode = 'ae',  num_epochs = 20, latent_size = 1024)
-
+    main(log_dir, 
+         loss_mode = 'vae', beta_mode = 'constant', 
+         num_epochs = 20, batch_size = 256, latent_size = args.latent_size,
+         target_beta_val = 1, grad_clip=1, lr = 1e-3, eval_interval = 5)
+    
     #Q 2.2 - Variational Auto-Encoder
     #main('vae_latent1024', loss_mode = 'vae', num_epochs = 20, latent_size = 1024)
+
 
     #Q 2.3.1 - Beta-VAE (constant beta)
     #Run for beta values 0.8, 1.2
