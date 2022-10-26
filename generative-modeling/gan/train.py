@@ -71,7 +71,7 @@ def train_model(
     gen_loss_fn=None,
     disc_loss_fn=None,
     log_period=10000,
-    wandb_logging = False
+    wandb_logging = True
 ):
     if wandb_logging:
         wandb.init(project="vlr-hw2", reinit=False)
@@ -185,13 +185,13 @@ def train_model(
                     )
 
                 vislogger_train.add_data(iters, 
-                                         wandb.Image(Image.open(prefix + "samples_{}.png".format(iters))),
-                                         wandb.Image(Image.open(prefix + "interpolations_{}.png".format(iters)))
+                                         wandb.Image(Image.open(prefix+"samples_{}.png".format(iters))),
+                                         wandb.Image(Image.open(prefix+"interpolations_{}.png".format(iters)))
                                         )
-            wandb.log({f"val/Visuals": vislogger_train})
             ##
             scaler.update()
             iters += 1
+        wandb.log({f"val/Visuals{iters}": vislogger_train})
     print("Training Done.")
     fid = get_fid(
         gen,
