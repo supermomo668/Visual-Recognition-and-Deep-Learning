@@ -25,19 +25,23 @@ def ae_loss(model, x):
 
 def vae_loss(model, x, beta = 1):
     """TODO 2.2.2 : Fill in recon_loss and kl_loss. """
-    def kl_divergence(self, z, mu, std):
+    def kl_divergence(z, mu, std):
         p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
         q = torch.distributions.Normal(mu, std)
         # 2. get the probabilities from the equation # kl
         kl = (q.log_prob(z) - p.log_prob(z)).sum(dim=-1)
         return kl
+    def gaussian_likelihood(x_recon, x):
+        dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]))
+        # measure prob of seeing image under p(x|z)
+        log_pxz = dist.log_prob(x)
+        return log_pxz.sum(dim=(1, 2, 3))
     mu, log_var = model.encoder(x)   # (*, z_dim)
     std = torch.exp(0.5*log_var)  # (*, z_dim)
     z = torch.distributions.Normal(mu, std).rsample()  # (*, z_dim)
     #
-    x_recon = model.decode(z)
-    recon_loss = nn.MSELoss()(x_recon, x)
-    kl_loss = kl(z, mu, std)
+    recon_loss = gaussian_likelihood(model.decoder(z), x)   # x_recon vs x
+    kl_loss = kl_divergence(z, mu, std)
     total_loss = recon_loss + beta*kl_loss
     return total_loss, OrderedDict(srecon_loss=recon_loss, kl_loss=kl_loss)
 

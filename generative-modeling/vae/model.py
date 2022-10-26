@@ -24,8 +24,9 @@ class Encoder(nn.Module):
         """
         layers = []
         in_filters = input_shape[0]
-        for n_filters in np.power(2, np.linspace(5, 8, num=4)).astype(int):
-            layers.append(nn.Conv2d(in_channels=in_filters, out_channels=n_filters, kernel_size=3, stride=1, padding=1)),
+        for n, n_filters in enumerate(np.power(2, np.linspace(5, 8, num=4)).astype(int)):
+            s = 2 if n>=1 else 1
+            layers.append(nn.Conv2d(in_channels=in_filters, out_channels=n_filters, kernel_size=3, stride=s, padding=1)),
             layers.append(nn.ReLU(inplace=True))
             in_filters=n_filters
         self.convs = nn.Sequential(*layers)
@@ -44,18 +45,15 @@ class VAEEncoder(Encoder):
     def __init__(self, input_shape, latent_dim):
         super().__init__(input_shape, latent_dim)
         # TODO 2.2.1: fill in self.fc, such that output dimension is 2*self.latent_dim
-        self.fc = nn.Sequential(
-            self.convs,
-            self.fc,
-            nn.Linear(latent_dim, 2*latent_dim)
-        )
+        self.fc = nn.Linear(self.conv_out_dim, 2*latent_dim)
         
     def forward(self, x):
         # TODO 2.2.1: forward pass through the network.
         # should return a tuple of 2 tensors, each of dimension self.latent_dim
-        z_out = self.fc(x)
-        z_out = z_out.view((len(x), 2, -1))        
-        return (z_out[...,0], z_out[..., 1])
+        x = self.convs(x)
+        z_out = self.fc(x.view(len(x), -1))
+        z_out = z_out.view((len(x), 2, -1))  
+        return (z_out[..., 0, :], z_out[..., 1, :])
 
 class Decoder(nn.Module):
     def __init__(self, latent_dim, output_shape):
@@ -64,7 +62,7 @@ class Decoder(nn.Module):
         self.output_shape = output_shape
 
         #TODO 2.1.1: fill in self.base_size
-        self.base_size = (3, 4, 4)
+        self.base_size = (128, 4, 4)
         self.fc = nn.Linear(latent_dim, np.prod(self.base_size))
         
         """
@@ -82,15 +80,19 @@ class Decoder(nn.Module):
         """
         layers = []
         in_filters = 2**7
-        for n_filters in np.power(2, np.linspace(8-1, 5, num=4-1)).astype(int)+[3]:
-            layers.append(nn.Conv2d(in_channels=in_filters, out_channels=n_filters, kernel_size=3, stride=1, padding=1)),
+        filters_num = np.concatenate((np.power(2, np.linspace(8-1, 5, num=4-1)),[3])).astype(int)
+        for n, n_filters in enumerate(filters_num):
+            s = 2 if n !=len(filters_num)-1 else 1
+            k = 4 if n !=len(filters_num)-1 else 3
+            layers.append(nn.ConvTranspose2d(in_channels=in_filters, out_channels=n_filters, kernel_size=k, stride=s, padding=1)),
             layers.append(nn.ReLU(inplace=True))
             in_filters=n_filters
         self.deconvs = nn.Sequential(*layers)
 
     def forward(self, z):
         # TODO 2.1.1: forward pass through the network, first through self.fc, then self.deconvs.
-        return self.deconvs(z)
+        z = self.fc(z)
+        return self.deconvs(z.view((len(z),)+self.base_size))
 
 
 class AEModel(nn.Module):
