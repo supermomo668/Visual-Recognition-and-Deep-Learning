@@ -31,10 +31,10 @@ def get_optimizers_and_schedulers(gen, disc):
     # The learning rate for the generator should be decayed to 0 over 100K steps.
     lr = 2e-4
     disc = disc.cuda()
-    optim_discriminator = torch.optim.Adam(disc.parameters(), lr=lr,)
+    optim_discriminator = torch.optim.Adam(disc.parameters(), lr=lr, betas=(0, 0.9))
     scheduler_discriminator = torch.optim.lr_scheduler.LinearLR(
         optim_discriminator, start_factor=1, end_factor=0, total_iters=int(5e5), last_epoch=-1, verbose=False)
-    optim_generator = torch.optim.Adam(gen.parameters(), lr=lr)
+    optim_generator = torch.optim.Adam(gen.parameters(), lr=lr, betas=(0, 0.9))
     scheduler_generator = scheduler_discriminator = torch.optim.lr_scheduler.LinearLR(
         optim_generator, start_factor=1, end_factor=0, total_iters=int(1e5), last_epoch=-1, verbose=False)
     return (
