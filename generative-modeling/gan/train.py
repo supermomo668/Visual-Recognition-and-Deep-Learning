@@ -75,12 +75,12 @@ def train_model(
 ):
     if wandb_logging:
         wandb.init(project="vlr-hw2", reinit=False)
-    datadir_exist = os.path.exists(prefix+"datasets/CUB_200_2011_32")
+    datadir_exist = os.path.exists("gan/datasets/CUB_200_2011_32")
     print(f"data dir exist:{datadir_exist}")
     torch.backends.cudnn.benchmark = True
     ds_transforms = build_transforms()
     train_loader = torch.utils.data.DataLoader(
-        Dataset(root=prefix+"datasets/CUB_200_2011_32", transform=ds_transforms),
+        Dataset(root="gan/datasets/CUB_200_2011_32", transform=ds_transforms),
         batch_size=batch_size,
         shuffle=True,
         num_workers=1,
@@ -157,8 +157,8 @@ def train_model(
                         prefix + "samples_{}.png".format(iters),
                         nrow=10,
                     )
-                    torch.jit.save(gen, prefix + "/generator.pt")
-                    torch.jit.save(disc, prefix + "/discriminator.pt")
+                    torch.jit.save(gen, prefix + "generator.pt")
+                    torch.jit.save(disc, prefix + "discriminator.pt")
                     fid = get_fid(
                         gen,
                         dataset_name="cub",
