@@ -36,7 +36,7 @@ def compute_generator_loss(discrim_fake):
     # TODO 1.5.1: Implement WGAN-GP loss for generator.
     # loss = - E[D(fake_data)]
     gen_loss = -1. * torch.mean(discrim_fake)
-    return loss
+    return gen_loss
 
 
 
