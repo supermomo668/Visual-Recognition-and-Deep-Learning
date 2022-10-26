@@ -39,7 +39,7 @@ def interpolate_latent_space(gen, path):
     # Use torchvision.utils.save_image to save out the visualization.
     n_samples = 100
     z = torch.randn(n_samples, 128).cuda()   # (100, 128)
-    z[:,0] = z[:,1] = torch.linspace(-1, 1, n_samples)
-    gen_im = gen(z)
+    z[:,0] = z[:,1] = torch.linspace(-1, 1, n_samples).cuda()
+    gen_im = gen.forward_given_samples(z)
     save_image(gen_im, path)
     return gen_im

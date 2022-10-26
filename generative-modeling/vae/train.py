@@ -19,19 +19,27 @@ def ae_loss(model, x):
     TODO 2.1.2: fill in MSE loss between x and its reconstruction. 
     return loss, {recon_loss = loss} 
     """
-    loss = None
-
+    criterion = nn.MSELoss()
+    loss = criterion(model(x), x)
     return loss, OrderedDict(recon_loss=loss)
 
 def vae_loss(model, x, beta = 1):
     """TODO 2.2.2 : Fill in recon_loss and kl_loss. """
-
-    recon_loss = ...
-    kl_loss = ...
-
+    def kl_divergence(self, z, mu, std):
+        p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
+        q = torch.distributions.Normal(mu, std)
+        # 2. get the probabilities from the equation # kl
+        kl = (q.log_prob(z) - p.log_prob(z)).sum(dim=-1)
+        return kl
+    mu, log_var = model.encoder(x)   # (*, z_dim)
+    std = torch.exp(0.5*log_var)  # (*, z_dim)
+    z = torch.distributions.Normal(mu, std).rsample()  # (*, z_dim)
+    #
+    x_recon = model.decode(z)
+    recon_loss = nn.MSELoss()(x_recon, x)
+    kl_loss = kl(z, mu, std)
     total_loss = recon_loss + beta*kl_loss
-    return total_loss, OrderedDict(recon_loss=recon_loss, kl_loss=kl_loss)
-
+    return total_loss, OrderedDict(srecon_loss=recon_loss, kl_loss=kl_loss)
 
 def constant_beta_scheduler(target_val = 1):
     def _helper(epoch):
@@ -42,7 +50,7 @@ def linear_beta_scheduler(max_epochs=None, target_val = 1):
     """TODO 2.3.2 : Fill in helper. The value returned should increase linearly 
     from 0 at epoch 0 to target_val at epoch max_epochs """
     def _helper(epoch):
-       ...
+        return torch.tensor((max_epochs-epoch)/max_epochs)
     return _helper
 
 def run_train_epoch(model, loss_mode, train_loader, optimizer, beta = 1, grad_clip = 1):
