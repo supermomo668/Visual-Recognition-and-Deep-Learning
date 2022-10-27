@@ -140,7 +140,7 @@ if __name__ == '__main__':
                             default='ae_latent1024', help="directory")
         # ['ae_latent1024','vae_latent1024', 'vae_latent1024_beta_constant0.8','vae_latent1024_beta_linear1']
         parser.add_argument('--beta_mode', dest='beta_mode', type=str,
-                            default=None, help="directorye")   
+                            default='constant', help="directorye")   
         # ['constant', 'linear']
         parser.add_argument('--target_beta_val', dest='target_beta_val', type=float,
                             default=0.8, help="final beta")   # 
@@ -151,6 +151,7 @@ if __name__ == '__main__':
     #2.1 - Auto-Encoder
     #Run for latent_sizes 16, 128 and 1024
     #main('ae_latent1024', loss_mode = 'ae',  num_epochs = 20, latent_size = 1024)
+    args['loss_mode'] = 'ae'
     exp_params = {
         "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
         "latent_size": [16, 128, 1024]
