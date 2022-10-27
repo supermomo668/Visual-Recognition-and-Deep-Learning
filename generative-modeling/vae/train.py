@@ -13,14 +13,14 @@ import time
 import os
 from utils import *
 
-
 def ae_loss(model, x):
     """ 
     TODO 2.1.2: fill in MSE loss between x and its reconstruction. 
     return loss, {recon_loss = loss} 
     """
     criterion = nn.MSELoss()
-    loss = criterion(model(x), x)
+    z = model.encoder(x)
+    loss = criterion(model.decoder(z), x)
     return loss, OrderedDict(recon_loss=loss)
 
 def vae_loss(model, x, beta = 1):
@@ -32,7 +32,7 @@ def vae_loss(model, x, beta = 1):
         kl = (q.log_prob(z) - p.log_prob(z)).sum(dim=-1)
         return kl
     def gaussian_likelihood(x_recon, x):
-        dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]))
+        dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]).cuda())
         # measure prob of seeing image under p(x|z)
         log_pxz = dist.log_prob(x)
         return log_pxz.sum(dim=(1, 2, 3))
@@ -122,25 +122,59 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
 
             vis_recons(model, vis_x, 'data/'+log_dir+ '/epoch_'+str(epoch))
             if loss_mode == 'vae':
-                vis_samples(model, 'data/'+log_dir+ '/epoch_'+str(epoch) )
+                vis_samples(model, 'data/'+log_dir+ '/epoch_'+str(epoch))
 
 
 if __name__ == '__main__':
-    pass
+    import argparse 
+    def parse_a2c_arguments():
+        # Command-line flags are defined here.
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--latent_size', dest='latent_size', type=int,
+                            default=1024, help="Size of latent space")   # 'LunarLander-v2'
+        parser.add_argument('--num_epochs', dest='num_epochs', type=int,
+                            default=20, help="Size of latent space")   # 'LunarLander-v2'
+        parser.add_argument('--loss_mode', dest='loss_mode', type=str,
+                            default='ae', help="Size of latent space")   # 'LunarLander-v2'
+        parser.add_argument('--log_dir', dest='log_dir', type=str,
+                            default='ae_latent1024', help="directory")
+        # ['ae_latent1024','vae_latent1024', 'vae_latent1024_beta_constant0.8','vae_latent1024_beta_linear1']
+        parser.add_argument('--beta_mode', dest='beta_mode', type=str,
+                            default=None, help="directorye")   
+        # ['constant', 'linear']
+        parser.add_argument('--target_beta_val', dest='target_beta_val', type=float,
+                            default=0.8, help="final beta")   # 
+        # [0.8. 1]
+        return parser.parse_known_args()[0]  #parser.parse_args()
+    args = parse_a2c_arguments().__dict__
     #TODO: Experiments to run : 
     #2.1 - Auto-Encoder
     #Run for latent_sizes 16, 128 and 1024
     #main('ae_latent1024', loss_mode = 'ae',  num_epochs = 20, latent_size = 1024)
-
+    exp_params = {
+        "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
+        "latent_size": [16, 128, 1024]
+    }
+    for i in range(3):
+        for p, v in exp_params.items():
+            args[p] = v[i]
+        main(**args)  
     #Q 2.2 - Variational Auto-Encoder
     #main('vae_latent1024', loss_mode = 'vae', num_epochs = 20, latent_size = 1024)
-
+    args['loss_mode'] = 'vae'
+    args['log_dir'] = 'vae_latent1024.8'
+    main(**args)  
     #Q 2.3.1 - Beta-VAE (constant beta)
     #Run for beta values 0.8, 1.2
     #main('vae_latent1024_beta_constant0.8', loss_mode = 'vae', beta_mode = 'constant', target_beta_val = 0.8, num_epochs = 20, latent_size = 1024)
-
+    args['beta_mode'] = 'constant'
+    args['log_dir'] = 'vae_latent1024_beta_constant0.8'
+    main(**args)  
     #Q 2.3.2 - VAE with annealed beta (linear schedule)
     # main(
     #     'vae_latent1024_beta_linear1', loss_mode = 'vae', beta_mode = 'linear', 
     #     target_beta_val = 1, num_epochs = 20, latent_size = 1024
     # )
+    args['beta_mode'] = 'linear'
+    args['log_dir'] = 'vae_latent1024_beta_linear1.8'
+    main(**args)  
