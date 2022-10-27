@@ -35,13 +35,13 @@ def vae_loss(model, x, beta = 1):
         dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]).cuda())
         # measure prob of seeing image under p(x|z)
         log_pxz = dist.log_prob(x)
-        return log_pxz.sum(dim=(1, 2, 3))
+        return -log_pxz.sum(dim=(1, 2, 3))
     mu, log_var = model.encoder(x)   # (*, z_dim)
     std = torch.exp(0.5*log_var)  # (*, z_dim)
     z = torch.distributions.Normal(mu, std).rsample()  # (*, z_dim)
     #
-    recon_loss = gaussian_likelihood(model.decoder(z), x)   # x_recon vs x
-    kl_loss = kl_divergence(z, mu, std)
+    recon_loss = gaussian_likelihood(model.decoder(z), x).mean()  # x_recon vs x
+    kl_loss = kl_divergence(z, mu, std).mean()
     total_loss = recon_loss + beta*kl_loss
     return total_loss, OrderedDict(srecon_loss=recon_loss, kl_loss=kl_loss)
 
@@ -151,19 +151,19 @@ if __name__ == '__main__':
     #2.1 - Auto-Encoder
     #Run for latent_sizes 16, 128 and 1024
     #main('ae_latent1024', loss_mode = 'ae',  num_epochs = 20, latent_size = 1024)
-    args['loss_mode'] = 'ae'
-    exp_params = {
-        "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
-        "latent_size": [16, 128, 1024]
-    }
-    for i in range(3):
-        for p, v in exp_params.items():
-            args[p] = v[i]
-        main(**args)  
+    # args['loss_mode'] = 'ae'
+    # exp_params = {
+    #     "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
+    #     "latent_size": [16, 128, 1024]
+    # }
+    # for i in range(3):
+    #     for p, v in exp_params.items():
+    #         args[p] = v[i]
+    #     main(**args)  
     #Q 2.2 - Variational Auto-Encoder
     #main('vae_latent1024', loss_mode = 'vae', num_epochs = 20, latent_size = 1024)
     args['loss_mode'] = 'vae'
-    args['log_dir'] = 'vae_latent1024.8'
+    args['log_dir'] = 'vae_latent1024'
     main(**args)  
     #Q 2.3.1 - Beta-VAE (constant beta)
     #Run for beta values 0.8, 1.2
