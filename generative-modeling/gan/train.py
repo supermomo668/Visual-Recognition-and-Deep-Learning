@@ -31,12 +31,12 @@ def get_optimizers_and_schedulers(gen, disc):
     # The learning rate for the generator should be decayed to 0 over 100K steps.
     lr = 2e-4
     disc = disc.cuda()
-    optim_discriminator = torch.optim.Adam(disc.parameters(), lr=lr, betas=(0, 0.9))
-    scheduler_discriminator = torch.optim.lr_scheduler.LinearLR(
-        optim_discriminator, start_factor=1, end_factor=0, total_iters=int(5e5), last_epoch=-1, verbose=False)
-    optim_generator = torch.optim.Adam(gen.parameters(), lr=lr, betas=(0, 0.9))
-    scheduler_generator = scheduler_discriminator = torch.optim.lr_scheduler.LinearLR(
-        optim_generator, start_factor=1, end_factor=0, total_iters=int(1e5), last_epoch=-1, verbose=False)
+    optim_discriminator = torch.optim.Adam(disc.parameters(), lr=1, betas=(0, 0.9))
+    scheduler_discriminator = torch.optim.lr_scheduler.LambdaLR(optim_discriminator, lr_lambda=lambda iters: lr*(1-iters/int(5e5)))
+    #scheduler_discriminator = torch.optim.lr_scheduler.LinearLR(optim_discriminator, start_factor=1, end_factor=0, total_iters=int(5e5), last_epoch=-1, verbose=False)
+    #
+    optim_generator = torch.optim.Adam(gen.parameters(), lr=1, betas=(0, 0.9))
+    scheduler_generator = torch.optim.lr_scheduler.LambdaLR(optim_generator, lr_lambda=lambda iters: lr*(1-iters/int(1e5)))
     return (
         optim_discriminator,
         scheduler_discriminator,
@@ -98,10 +98,10 @@ def train_model(
     iters = 0
     fids_list = []
     iters_list = []
-
+    gen.train()
+    disc.train()
     vislogger_train = wandb.Table(columns=["Iter", "Generated Image",  "Interpolation"])
     while iters < num_iterations:
-        print(f"Epoch after iters:{iters}")
         for i, train_batch in enumerate(train_loader):
             with torch.cuda.amp.autocast():
                 train_batch = train_batch.cuda()
@@ -150,7 +150,7 @@ def train_model(
                 with torch.no_grad():
                     with torch.cuda.amp.autocast():
                         # TODO 1.2: Generate samples using the generator, make sure they lie in the range [0, 1].
-                        generated_samples = gen(n_samples=100)
+                        generated_samples = gen(n_samples=100)/2 + 0.5
                     #
                     save_image(
                         generated_samples.data.float(),
@@ -192,6 +192,7 @@ def train_model(
             ##
             scaler.update()
             iters += 1
+        print(f"Epoch after iters:{iters}. D.Loss:{discriminator_loss}.G.Loss:{generator_loss}. LR:{scheduler_discriminator.get_lr()}")
     print("Training Done.")
     fid = get_fid(
         gen,

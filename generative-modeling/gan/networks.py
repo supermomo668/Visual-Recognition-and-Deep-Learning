@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import os
-os.environ["PYTORCH_JIT"] = "0"
+#os.environ["PYTORCH_JIT"] = "0"
 
 class UpSampleConv2D(jit.ScriptModule):
     # TODO 1.1: Implement nearest neighbor upsampling + conv layer
@@ -225,16 +225,16 @@ class Generator(jit.ScriptModule):
     )
     """
     def __init__(self, starting_image_size=4):
-        in_feat = 128
+        self.z_dim = 128
         super(Generator, self).__init__()
-        self.dense1 = nn.Linear(in_features=in_feat, out_features=2048, bias=True)
+        self.dense1 = nn.Linear(in_features=self.z_dim, out_features=2048, bias=True)
         self.layers = nn.Sequential(
-            ResBlockUp(in_feat),
-            ResBlockUp(in_feat),
-            ResBlockUp(in_feat),
-            nn.BatchNorm2d(in_feat),
+            ResBlockUp(self.z_dim),
+            ResBlockUp(self.z_dim),
+            ResBlockUp(self.z_dim),
+            nn.BatchNorm2d(self.z_dim),
             nn.ReLU(inplace=False),
-            nn.Conv2d(in_feat, out_channels=3, kernel_size=1),
+            nn.Conv2d(self.z_dim, out_channels=3, kernel_size=3, padding=1),
             nn.Tanh()
         )
         self.starting_image_size = starting_image_size
@@ -244,16 +244,15 @@ class Generator(jit.ScriptModule):
         # TODO 1.1: forward the generator assuming a set of samples z have been passed in.
         # Don't forget to re-shape the output of the dense layer into an image with the appropriate size!
         x = self.dense1(z)
-        x = x.view(x.size(0),-1, self.starting_image_size, self.starting_image_size)
-        x = self.layers(x)    # [4, 3, 64, 64]
-        return x
+        x = x.view(x.size(0),-1, self.starting_image_size, self.starting_image_size)   # [*, 128, 4, 4]
+        return self.layers(x)    # [*, 3, 64, 64]
 
     @jit.script_method
     def forward(self, n_samples: int = 1024):
         # TODO 1.1: Generate n_samples latents and forward through the network.
         # Make sure to cast the latents to type half (for compatibility with torch.cuda.amp.autocast)        
-        noise = torch.randn(n_samples, 128).cuda()
-        return (self.forward_given_samples(noise)+1.0)/2.0
+        noise = torch.randn(n_samples, self.z_dim).cuda()
+        return self.forward_given_samples(noise)
     
 class Discriminator(jit.ScriptModule):
     # TODO 1.1: Impement Discriminator. Follow the architecture described below:
@@ -325,6 +324,6 @@ class Discriminator(jit.ScriptModule):
         # TODO 1.1: Forward the discriminator assuming a batch of images have been passed in.
         # Make sure to flatten the output of the convolutional layers and sum across the image dimensions before passing to the output layer!
         x = self.layers(x)   # (*, 128, 8, 8)
-        x = torch.sum(x.view(x.size(0), x.size(1),-1), dim=-1)
+        x = torch.sum(x, dim=(2,3))
         x = self.dense_out(x.view(x.size(0), -1))
         return x

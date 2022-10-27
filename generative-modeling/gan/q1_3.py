@@ -15,8 +15,7 @@ def compute_discriminator_loss(
     criterion = torch.nn.BCEWithLogitsLoss()
     disc_fake_loss = criterion(discrim_fake, torch.zeros_like(discrim_fake))
     disc_real_loss = criterion(discrim_real, torch.ones_like(discrim_real))
-    disc_loss = (disc_fake_loss + disc_real_loss)
-    return disc_loss
+    return (disc_fake_loss + disc_real_loss)
 
 
 def compute_generator_loss(discrim_fake):
