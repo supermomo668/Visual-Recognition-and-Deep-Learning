@@ -31,6 +31,13 @@ def get_dataloaders(batch_size = 256):
 
     return train_loader, val_loader
 
+def save_plot(x, y, xlabel, ylabel, title, filename):
+    plt.plot(x, y)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.savefig(filename + ".png")
+    
 def preprocess_data(x):
     x = 2*x - 1
     return x.to('cuda')

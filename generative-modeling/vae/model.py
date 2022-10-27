@@ -95,7 +95,8 @@ class Decoder(nn.Module):
     def forward(self, z):
         # TODO 2.1.1: forward pass through the network, first through self.fc, then self.deconvs.
         z = self.fc(z)
-        return self.deconvs(z.view((len(z),)+self.base_size))
+        z = z.view((len(z),)+self.base_size)
+        return self.deconvs(z)
 
 
 class AEModel(nn.Module):
