@@ -31,16 +31,19 @@ def vae_loss(model, x, beta = 1):
         # 2. get the probabilities from the equation # kl
         kl = (q.log_prob(z) - p.log_prob(z)).sum(dim=-1)
         return kl
-    def gaussian_likelihood(x_recon, x):
+    # Not used
+    def likelihood(x_recon, x):
         dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]).cuda())
         # measure prob of seeing image under p(x|z)
         log_pxz = dist.log_prob(x)
-        return -log_pxz.sum(dim=(1, 2, 3))
+        return log_pxz.sum(dim=(1, 2, 3))
+    # compute sampled z
     mu, log_var = model.encoder(x)   # (*, z_dim)
     std = torch.exp(0.5*log_var)  # (*, z_dim)
     z = torch.distributions.Normal(mu, std).rsample()  # (*, z_dim)
     #
-    recon_loss = gaussian_likelihood(model.decoder(z), x).mean()  # x_recon vs x
+    #recon_loss = -1.0*likelihood(model.decoder(z), x).mean()  # x_recon vs x
+    recon_loss = nn.MSELoss()(model.decoder(z), x)
     kl_loss = kl_divergence(z, mu, std).mean()
     total_loss = recon_loss + beta*kl_loss
     return total_loss, OrderedDict(srecon_loss=recon_loss, kl_loss=kl_loss)
@@ -88,7 +91,6 @@ def get_val_metrics(model, loss_mode, val_loader):
             elif loss_mode == 'vae':
                 _, _metric = vae_loss(model, x)
             all_metrics.append(_metric)
-
     return avg_dict(all_metrics)
 
 def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, batch_size = 256, latent_size = 256,
@@ -102,7 +104,7 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
     optimizer = optim.Adam(model.parameters(), lr=lr)
     
     vis_x = next(iter(val_loader))[0][:36]
-    
+    val_loss = {'srecon_loss':[], 'kl_loss':[]}
     #beta_mode is for part 2.3, you can ignore it for parts 2.1, 2.2
     if beta_mode == 'constant':
         beta_fn = constant_beta_scheduler(target_val = target_beta_val) 
@@ -113,8 +115,10 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
         print('epoch', epoch)
         train_metrics = run_train_epoch(model, loss_mode, train_loader, optimizer, beta_fn(epoch))
         val_metrics = get_val_metrics(model, loss_mode, val_loader)
-
         #TODO : add plotting code for metrics (required for multiple parts)
+        for k, m in val_loss.items():
+            val_loss[k].append(val_metrics[k])
+            save_plot(range(epoch+1), val_loss[k], k, 'epochs', f'{k} vs epochs', 'data/'+log_dir+'/epoch_'+str(epoch)+f'_{k}')
 
         if (epoch+1)%eval_interval == 0:
             print(epoch, train_metrics)
