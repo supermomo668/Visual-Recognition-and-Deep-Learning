@@ -85,14 +85,15 @@ class Decoder(nn.Module):
             s = 2 if n !=len(filters_num)-1 else 1
             k = 4 if n !=len(filters_num)-1 else 3
             layers.append(nn.ConvTranspose2d(in_channels=in_filters, out_channels=n_filters, kernel_size=k, stride=s, padding=1)),
-            layers.append(nn.ReLU(inplace=True))
+            if n!=len(filters_num)-1: layers.append(nn.ReLU(inplace=True))
             in_filters=n_filters
         self.deconvs = nn.Sequential(*layers)
 
     def forward(self, z):
         # TODO 2.1.1: forward pass through the network, first through self.fc, then self.deconvs.
         z = self.fc(z)
-        return self.deconvs(z.view((len(z),)+self.base_size))
+        z = self.deconvs(z.view((len(z),)+self.base_size))
+        return 
 
 
 class AEModel(nn.Module):
