@@ -253,7 +253,7 @@ class Generator(jit.ScriptModule):
         # TODO 1.1: Generate n_samples latents and forward through the network.
         # Make sure to cast the latents to type half (for compatibility with torch.cuda.amp.autocast)        
         noise = torch.randn(n_samples, 128).cuda()
-        return self.forward_given_samples(noise)
+        return (self.forward_given_samples(noise)+1.0)/2.0
     
 class Discriminator(jit.ScriptModule):
     # TODO 1.1: Impement Discriminator. Follow the architecture described below:

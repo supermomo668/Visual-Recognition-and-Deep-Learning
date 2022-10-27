@@ -71,7 +71,7 @@ def train_model(
     gen_loss_fn=None,
     disc_loss_fn=None,
     log_period=10000,
-    wandb_logging = False
+    wandb_logging = True
 ):
     if wandb_logging:
         wandb.init(project="vlr-hw2", reinit=False)
@@ -83,7 +83,7 @@ def train_model(
         Dataset(root="gan/datasets/CUB_200_2011_32", transform=ds_transforms),
         batch_size=batch_size,
         shuffle=True,
-        num_workers=1,
+        num_workers=2,
         pin_memory=True,
     )
     (
@@ -150,7 +150,7 @@ def train_model(
                 with torch.no_grad():
                     with torch.cuda.amp.autocast():
                         # TODO 1.2: Generate samples using the generator, make sure they lie in the range [0, 1].
-                        generated_samples = torch.clamp(gen(n_samples=100), 0, 1)
+                        generated_samples = gen(n_samples=100)
                     #
                     save_image(
                         generated_samples.data.float(),
