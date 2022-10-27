@@ -104,7 +104,7 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
     optimizer = optim.Adam(model.parameters(), lr=lr)
     
     vis_x = next(iter(val_loader))[0][:36]
-    val_loss = {'srecon_loss':[], 'kl_loss':[]}
+    val_loss = dict()
     #beta_mode is for part 2.3, you can ignore it for parts 2.1, 2.2
     if beta_mode == 'constant':
         beta_fn = constant_beta_scheduler(target_val = target_beta_val) 
@@ -116,9 +116,12 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
         train_metrics = run_train_epoch(model, loss_mode, train_loader, optimizer, beta_fn(epoch))
         val_metrics = get_val_metrics(model, loss_mode, val_loader)
         #TODO : add plotting code for metrics (required for multiple parts)
-        for k, m in val_loss.items():
-            val_loss[k].append(val_metrics[k])
-            save_plot(range(epoch+1), val_loss[k], k, 'epochs', f'{k} vs epochs', 'data/'+log_dir+'/epoch_'+str(epoch)+f'_{k}')
+        for k, m in val_metrics.items():
+            try:
+                val_loss[k].append(val_metrics[k])
+            except:
+                val_loss[k] = [val_metrics[k]]
+            plot_loss(range(epoch+1), val_loss[k], k, 'epochs', f'{k} vs epochs', 'data/'+log_dir+'/epoch_'+str(epoch)+f'_{k}')
 
         if (epoch+1)%eval_interval == 0:
             print(epoch, train_metrics)
@@ -155,15 +158,15 @@ if __name__ == '__main__':
     #2.1 - Auto-Encoder
     #Run for latent_sizes 16, 128 and 1024
     #main('ae_latent1024', loss_mode = 'ae',  num_epochs = 20, latent_size = 1024)
-    # args['loss_mode'] = 'ae'
-    # exp_params = {
-    #     "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
-    #     "latent_size": [16, 128, 1024]
-    # }
-    # for i in range(3):
-    #     for p, v in exp_params.items():
-    #         args[p] = v[i]
-    #     main(**args)  
+    args['loss_mode'] = 'ae'
+    exp_params = {
+        "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
+        "latent_size": [16, 128, 1024]
+    }
+    for i in range(3):
+        for p, v in exp_params.items():
+            args[p] = v[i]
+        main(**args)  
     #Q 2.2 - Variational Auto-Encoder
     #main('vae_latent1024', loss_mode = 'vae', num_epochs = 20, latent_size = 1024)
     args['loss_mode'] = 'vae'
