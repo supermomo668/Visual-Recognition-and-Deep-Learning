@@ -31,7 +31,7 @@ def get_dataloaders(batch_size = 256):
 
     return train_loader, val_loader
 
-def save_plot(x, y, xlabel, ylabel, title, filename):
+def plot_loss(x, y, xlabel, ylabel, title, filename):
     plt.plot(x, y)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
