@@ -19,8 +19,8 @@ def ae_loss(model, x):
     TODO 2.1.2: fill in MSE loss between x and its reconstruction. 
     return loss, {recon_loss = loss} 
     """
-    criterion = nn.MSELoss()
-    loss = criterion(model(x), x)
+    bs = len(x)
+    loss = F.mse_loss(model(x).reshape(bs,-1), x.reshape(bs,-1))
     return loss, OrderedDict(recon_loss=loss)
 
 def vae_loss(model, x, beta = 1):
@@ -39,8 +39,8 @@ def vae_loss(model, x, beta = 1):
     mu, log_var = model.encoder(x)   # (*, z_dim)
     std = torch.exp(0.5*log_var)  # (*, z_dim)
     z = torch.distributions.Normal(mu, std).rsample()  # (*, z_dim)
-    #
-    recon_loss = gaussian_likelihood(model.decoder(z), x)   # x_recon vs x
+    # gaussian_likelihood
+    recon_loss = ae_loss(model.decoder(z), x)   # x_recon vs x
     kl_loss = kl_divergence(z, mu, std)
     total_loss = recon_loss + beta*kl_loss
     return total_loss, OrderedDict(srecon_loss=recon_loss, kl_loss=kl_loss)

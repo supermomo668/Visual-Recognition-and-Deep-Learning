@@ -30,10 +30,8 @@ def get_optimizers_and_schedulers(gen, disc):
     # The learning rate for the discriminator should be decayed to 0 over 500K steps.
     # The learning rate for the generator should be decayed to 0 over 100K steps.
     lr = 2e-4
-    disc = disc.cuda()
     optim_discriminator = torch.optim.Adam(disc.parameters(), lr=1, betas=(0, 0.9))
     scheduler_discriminator = torch.optim.lr_scheduler.LambdaLR(optim_discriminator, lr_lambda=lambda iters: lr*(1-iters/int(5e5)))
-    #scheduler_discriminator = torch.optim.lr_scheduler.LinearLR(optim_discriminator, start_factor=1, end_factor=0, total_iters=int(5e5), last_epoch=-1, verbose=False)
     #
     optim_generator = torch.optim.Adam(gen.parameters(), lr=1, betas=(0, 0.9))
     scheduler_generator = torch.optim.lr_scheduler.LambdaLR(optim_generator, lr_lambda=lambda iters: lr*(1-iters/int(1e5)))
@@ -164,7 +162,7 @@ def train_model(
                         dataset_name="cub",
                         dataset_resolution=32,
                         z_dimension=128,
-                        batch_size=fid_bs,
+                        batch_size=256,
                         num_gen=10_000,
                     )
                     wandb.log({'val/FID': fid})

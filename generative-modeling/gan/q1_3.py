@@ -12,16 +12,18 @@ def compute_discriminator_loss(
 ):
     # TODO 1.3.1: Implement GAN loss for discriminator.
     # Do not use discrim_interp, interp, lamb. They are placeholders for Q1.5.
-    criterion = torch.nn.BCEWithLogitsLoss()
-    disc_fake_loss = criterion(discrim_fake, torch.zeros_like(discrim_fake))
-    disc_real_loss = criterion(discrim_real, torch.ones_like(discrim_real))
+    #criterion = torch.nn.BCEWithLogitsLoss()
+    bs = len(discrim_real)
+    disc_fake_loss = F.binary_cross_entropy_with_logits(discrim_fake, torch.zeros_like(discrim_fake))
+    disc_real_loss = F.binary_cross_entropy_with_logits(discrim_real, torch.ones_like(discrim_real))
     return (disc_fake_loss + disc_real_loss)
 
 
 def compute_generator_loss(discrim_fake):
     # TODO 1.3.1: Implement GAN loss for generator.
-    criterion = torch.nn.BCEWithLogitsLoss()
-    gen_loss = criterion(discrim_fake, torch.ones_like(discrim_fake))
+    #criterion = torch.nn.BCEWithLogitsLoss()
+    bs = len(discrim_fake)
+    gen_loss = F.binary_cross_entropy_with_logits(discrim_fake, torch.ones_like(discrim_fake))
     return gen_loss
 
 
@@ -36,7 +38,7 @@ if __name__ == "__main__":
         gen,
         disc,
         num_iterations=int(3e4),
-        batch_size=128,
+        batch_size=64,
         prefix=prefix,
         gen_loss_fn=compute_generator_loss,
         disc_loss_fn=compute_discriminator_loss,
