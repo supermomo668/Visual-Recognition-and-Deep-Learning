@@ -31,11 +31,11 @@ def vae_loss(model, x, beta = 1):
         # 2. get the probabilities from the equation # kl
         kl = (q.log_prob(z) - p.log_prob(z)).sum(dim=-1)
         return kl
-    def gaussian_likelihood(x_recon, x):
-        dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]))
-        # measure prob of seeing image under p(x|z)
-        log_pxz = dist.log_prob(x)
-        return log_pxz.sum(dim=(1, 2, 3))
+    # def gaussian_likelihood(x_recon, x):
+    #     dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]))
+    #     # measure prob of seeing image under p(x|z)
+    #     log_pxz = dist.log_prob(x)
+    #     return log_pxz.sum(dim=(1, 2, 3))
     mu, log_var = model.encoder(x)   # (*, z_dim)
     std = torch.exp(0.5*log_var)  # (*, z_dim)
     z = torch.distributions.Normal(mu, std).rsample()  # (*, z_dim)

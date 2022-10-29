@@ -27,14 +27,14 @@ class UpSampleConv2D(jit.ScriptModule):
         # TODO 1.1: Implement nearest neighbor upsampling.
         # 1. Duplicate x channel wise upscale_factor^2 times.
         # (N, C, H, W) = (_, 3, 32, 32)
-        x = x.repeat(1, int(self.upscale_factor**2), 1, 1)   # (*, C*Up^2, H, W)
+        x = torch.repeat_interleave(x, repeats=int(self.upscale_factor**2), dim=1)
         # 2. Then re-arrange to form an image of shape (batch x channel x height*upscale_factor x width*upscale_factor).
         x = self.upscale_shuffle(x)   #  (*, C, H*Up, W*Up)
         # 3. Apply convolution.
         x = self.conv2d(x)   # (_, 128, 64, 64)
         # Hint for 2. look at
         # https://pytorch.org/docs/master/generated/torch.nn.PixelShuffle.html#torch.nn.PixelShuffle
-        return x 
+        return x
     
 class DownSampleConv2D(jit.ScriptModule):
     # TODO 1.1: Implement spatial mean pooling + conv layer
@@ -46,7 +46,7 @@ class DownSampleConv2D(jit.ScriptModule):
         self.downscale_ratio=downscale_ratio
         self.downscale_shuffle = nn.PixelUnshuffle(self.downscale_ratio)
         # 
-        self.conv2d = nn.Conv2d(in_channels=1, out_channels=n_filters, kernel_size=kernel_size, padding=padding)
+        self.conv2d = nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=kernel_size, padding=padding)
 
     @jit.script_method
     def forward(self, x):
@@ -54,11 +54,12 @@ class DownSampleConv2D(jit.ScriptModule):
         # Hint for 1. look at
         # https://pytorch.org/docs/master/generated/torch.nn.PixelUnshuffle.html#torch.nn.PixelUnshuffle
         # 1. Re-arrange to form an image of shape: (batch x channel * upscale_factor^2 x height x width).
-        x = x.repeat(1, int(self.downscale_ratio**2), 1, 1)   # (*, C*Up^2, H, W)
+        x = self.downscale_shuffle(x)   # (*, C*Up^2, H, W)
         # 2. Then split channel wise into upscale_factor^2 number of images of shape: (batch x channel x height x width).
-        x = self.downscale_shuffle(x)  # (N, C*Up^2, H/Up, W/Up) = (*, 48, 16, 16)
+        x = torch.chunk(x, int(self.downscale_ratio**2), dim=1)  # (*, Up^2, C, H/Up, W/Up) = (*, 48, 16, 16)
+        x = torch.stack(x)
         # 3. Average the images into one and apply convolution.
-        x = torch.mean(x,dim=1).unsqueeze(1)
+        x = torch.mean(x,dim=0)
         x = self.conv2d(x)  # (*, n_filters, 16, 16)
         return x
     

@@ -109,7 +109,7 @@ def train_model(
                 # 2. Compute discriminator output on the train batch.
                 # 3. Compute the discriminator output on the generated data.
                 gen_batch = gen(n_samples=bs)   # [N, 3, 64, 64]
-                discrim_fake = disc(gen_batch)
+                discrim_fake = disc(gen_batch.detach())
                 discrim_real = disc(train_batch)
 
                 # TODO: 1.5 Compute the interpolated batch and run the discriminator on it.
@@ -162,7 +162,7 @@ def train_model(
                         dataset_name="cub",
                         dataset_resolution=32,
                         z_dimension=128,
-                        batch_size=256,
+                        batch_size=fid_bs,
                         num_gen=10_000,
                     )
                     wandb.log({'val/FID': fid})
