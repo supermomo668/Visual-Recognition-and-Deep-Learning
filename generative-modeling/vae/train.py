@@ -13,14 +13,14 @@ import time
 import os
 from utils import *
 
+
 def ae_loss(model, x):
     """ 
     TODO 2.1.2: fill in MSE loss between x and its reconstruction. 
     return loss, {recon_loss = loss} 
     """
     criterion = nn.MSELoss()
-    z = model.encoder(x)
-    loss = criterion(model.decoder(z), x)
+    loss = criterion(model(x), x)
     return loss, OrderedDict(recon_loss=loss)
 
 def vae_loss(model, x, beta = 1):
@@ -31,20 +31,17 @@ def vae_loss(model, x, beta = 1):
         # 2. get the probabilities from the equation # kl
         kl = (q.log_prob(z) - p.log_prob(z)).sum(dim=-1)
         return kl
-    # Not used
-    def likelihood(x_recon, x):
-        dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]).cuda())
+    def gaussian_likelihood(x_recon, x):
+        dist = torch.distributions.Normal(x_recon, torch.tensor([1.0]))
         # measure prob of seeing image under p(x|z)
         log_pxz = dist.log_prob(x)
         return log_pxz.sum(dim=(1, 2, 3))
-    # compute sampled z
     mu, log_var = model.encoder(x)   # (*, z_dim)
     std = torch.exp(0.5*log_var)  # (*, z_dim)
     z = torch.distributions.Normal(mu, std).rsample()  # (*, z_dim)
     #
-    #recon_loss = -1.0*likelihood(model.decoder(z), x).mean()  # x_recon vs x
-    recon_loss = nn.MSELoss()(model.decoder(z), x)
-    kl_loss = kl_divergence(z, mu, std).mean()
+    recon_loss = gaussian_likelihood(model.decoder(z), x)   # x_recon vs x
+    kl_loss = kl_divergence(z, mu, std)
     total_loss = recon_loss + beta*kl_loss
     return total_loss, OrderedDict(srecon_loss=recon_loss, kl_loss=kl_loss)
 
@@ -91,6 +88,7 @@ def get_val_metrics(model, loss_mode, val_loader):
             elif loss_mode == 'vae':
                 _, _metric = vae_loss(model, x)
             all_metrics.append(_metric)
+
     return avg_dict(all_metrics)
 
 def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, batch_size = 256, latent_size = 256,
@@ -104,7 +102,7 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
     optimizer = optim.Adam(model.parameters(), lr=lr)
     
     vis_x = next(iter(val_loader))[0][:36]
-    val_loss = {'srecon_loss':[], 'kl_loss':[]}
+    
     #beta_mode is for part 2.3, you can ignore it for parts 2.1, 2.2
     if beta_mode == 'constant':
         beta_fn = constant_beta_scheduler(target_val = target_beta_val) 
@@ -115,10 +113,8 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
         print('epoch', epoch)
         train_metrics = run_train_epoch(model, loss_mode, train_loader, optimizer, beta_fn(epoch))
         val_metrics = get_val_metrics(model, loss_mode, val_loader)
+
         #TODO : add plotting code for metrics (required for multiple parts)
-        for k, m in val_loss.items():
-            val_loss[k].append(val_metrics[k])
-            save_plot(range(epoch+1), val_loss[k], k, 'epochs', f'{k} vs epochs', 'data/'+log_dir+'/epoch_'+str(epoch)+f'_{k}')
 
         if (epoch+1)%eval_interval == 0:
             print(epoch, train_metrics)
@@ -126,60 +122,25 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
 
             vis_recons(model, vis_x, 'data/'+log_dir+ '/epoch_'+str(epoch))
             if loss_mode == 'vae':
-                vis_samples(model, 'data/'+log_dir+ '/epoch_'+str(epoch))
+                vis_samples(model, 'data/'+log_dir+ '/epoch_'+str(epoch) )
 
 
 if __name__ == '__main__':
-    import argparse 
-    def parse_a2c_arguments():
-        # Command-line flags are defined here.
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--latent_size', dest='latent_size', type=int,
-                            default=1024, help="Size of latent space")   # 'LunarLander-v2'
-        parser.add_argument('--num_epochs', dest='num_epochs', type=int,
-                            default=20, help="Size of latent space")   # 'LunarLander-v2'
-        parser.add_argument('--loss_mode', dest='loss_mode', type=str,
-                            default='ae', help="Size of latent space")   # 'LunarLander-v2'
-        parser.add_argument('--log_dir', dest='log_dir', type=str,
-                            default='ae_latent1024', help="directory")
-        # ['ae_latent1024','vae_latent1024', 'vae_latent1024_beta_constant0.8','vae_latent1024_beta_linear1']
-        parser.add_argument('--beta_mode', dest='beta_mode', type=str,
-                            default='constant', help="directorye")   
-        # ['constant', 'linear']
-        parser.add_argument('--target_beta_val', dest='target_beta_val', type=float,
-                            default=0.8, help="final beta")   # 
-        # [0.8. 1]
-        return parser.parse_known_args()[0]  #parser.parse_args()
-    args = parse_a2c_arguments().__dict__
+    pass
     #TODO: Experiments to run : 
     #2.1 - Auto-Encoder
     #Run for latent_sizes 16, 128 and 1024
     #main('ae_latent1024', loss_mode = 'ae',  num_epochs = 20, latent_size = 1024)
-    # args['loss_mode'] = 'ae'
-    # exp_params = {
-    #     "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
-    #     "latent_size": [16, 128, 1024]
-    # }
-    # for i in range(3):
-    #     for p, v in exp_params.items():
-    #         args[p] = v[i]
-    #     main(**args)  
+
     #Q 2.2 - Variational Auto-Encoder
     #main('vae_latent1024', loss_mode = 'vae', num_epochs = 20, latent_size = 1024)
-    args['loss_mode'] = 'vae'
-    args['log_dir'] = 'vae_latent1024'
-    main(**args)  
+
     #Q 2.3.1 - Beta-VAE (constant beta)
     #Run for beta values 0.8, 1.2
     #main('vae_latent1024_beta_constant0.8', loss_mode = 'vae', beta_mode = 'constant', target_beta_val = 0.8, num_epochs = 20, latent_size = 1024)
-    args['beta_mode'] = 'constant'
-    args['log_dir'] = 'vae_latent1024_beta_constant0.8'
-    main(**args)  
+
     #Q 2.3.2 - VAE with annealed beta (linear schedule)
     # main(
     #     'vae_latent1024_beta_linear1', loss_mode = 'vae', beta_mode = 'linear', 
     #     target_beta_val = 1, num_epochs = 20, latent_size = 1024
     # )
-    args['beta_mode'] = 'linear'
-    args['log_dir'] = 'vae_latent1024_beta_linear1.8'
-    main(**args)  

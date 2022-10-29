@@ -40,6 +40,6 @@ def interpolate_latent_space(gen, path):
     n_samples = 100
     z = torch.randn(n_samples, 128).cuda()   # (100, 128)
     z[:,0] = z[:,1] = torch.linspace(-1, 1, n_samples).cuda()
-    gen_im = gen.forward_given_samples(z)
+    gen_im = gen.forward_given_samples(z)/2+0.5
     save_image(gen_im, path)
     return gen_im

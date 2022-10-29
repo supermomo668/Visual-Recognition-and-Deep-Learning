@@ -26,17 +26,17 @@ class DiffusionModel(nn.Module):
         self.self_condition = self.model.self_condition
         self.device = torch.cuda.current_device()
 
-        self.betas = cosine_beta_schedule(timesteps).to(self.device)
+        self.betas = cosine_beta_schedule(timesteps).to(self.device)   # (t,)
         self.num_timesteps = self.betas.shape[0]
 
         alphas = 1. - self.betas
         # TODO (Q3.1): compute the cummulative products for current and previous timesteps
-        self.alphas_cumprod = None
-        self.alphas_cumprod_prev = None
+        self.alphas_cumprod = torch.prod(alphas[:self.num_timesteps])
+        self.alphas_cumprod_prev = torch.prod(alphas[1:self.num_timesteps+1])
 
         # TODO (Q3.1): pre-compute the alphas needed for forward process
         # Hint: you should look at all the equations and see what you can pre-compute
-
+        
         # calculations for posterior q(x_{t-1} | x_t, x_0) in DDPM
         self.posterior_variance = self._get_posterior_variance()
         self.posterior_log_variance_clipped = torch.log(
@@ -63,7 +63,17 @@ class DiffusionModel(nn.Module):
     def predict_start_image_from_noise(self, x_t, t, noise):
         # TODO (Q3.1): given a noised image x_t and noise tensor, predict x_0
         x_start = None
-
+        with torch.no_grad():
+            if t > 1:
+                z = torch.randn(x.shape)
+            else:
+                z = 0
+            e_hat = self.forward(x, t.view(1, 1).repeat(x.shape[0], 1))
+            pre_scale = 1 / math.sqrt(self.alpha(t))
+            e_scale = (1 - self.alpha(t)) / math.sqrt(1 - self.alpha_bar(t))
+            post_sigma = math.sqrt(self.beta(t)) * z
+            x = pre_scale * (x - e_scale * e_hat) + post_sigma
+            return x
         return x_start
 
     def get_posterior_parameters(self, x_start, x_t, t):
@@ -107,8 +117,9 @@ class DiffusionModel(nn.Module):
     def ddpm_sample(self, shape):
         # TODO (Q3.1): implement the DDPM sampling process.
         # Hint: while returning the final image, ensure it is scaled between [0,1].
-        img = None
-
+        img = torch.randn(shape, device=self.device)
+        for t in range(self.num_timesteps):
+            
         img = unnormalize_to_zero_to_one(img)
         return img
 

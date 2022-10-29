@@ -12,17 +12,16 @@ def compute_discriminator_loss(
 ):
     # TODO 1.4.1: Implement LSGAN loss for discriminator.
     # Do not use discrim_interp, interp, lamb. They are placeholders for Q1.5.
-    criterion = torch.nn.MSELoss(reduction='mean')
-    disc_fake_loss = criterion(discrim_fake, torch.zeros_like(discrim_fake))
-    disc_real_loss = criterion(discrim_real, torch.ones_like(discrim_real))
-    disc_loss = (disc_fake_loss + disc_real_loss) / 2
-    return disc_loss
+    bs = len(discrim_real)
+    disc_fake_loss = torch.square(discrim_fake-torch.zeros_like(discrim_fake)).sum(-1).mean()
+    disc_real_loss = torch.square(discrim_real-torch.ones_like(discrim_real)).sum(-1).mean()
+    return (disc_fake_loss + disc_real_loss) / 2
 
 
 def compute_generator_loss(discrim_fake):
     # TODO 1.4.1: Implement LSGAN loss for generator.
-    criterion = torch.nn.MSELoss(reduction='mean')
-    gen_loss = criterion(discrim_fake, torch.ones_like(discrim_fake))
+    bs = len(discrim_fake)
+    gen_loss = torch.square(discrim_fake-torch.ones_like(discrim_fake)).sum(-1).mean()
     return gen_loss
 
 
@@ -37,7 +36,7 @@ if __name__ == "__main__":
         gen,
         disc,
         num_iterations=int(3e4),
-        batch_size=256,
+        batch_size=64,
         prefix=prefix,
         gen_loss_fn=compute_generator_loss,
         disc_loss_fn=compute_discriminator_loss,
