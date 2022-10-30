@@ -18,9 +18,8 @@ def ae_loss(model, x):
     TODO 2.1.2: fill in MSE loss between x and its reconstruction. 
     return loss, {recon_loss = loss} 
     """
-    criterion = nn.MSELoss()
     z = model.encoder(x)
-    loss = criterion(model.decoder(z), x)
+    loss = torch.square(model.decoder(z)-x).sum(dim=(1,2,3)).mean()
     return loss, OrderedDict(recon_loss=loss)
 
 def vae_loss(model, x, beta = 1):
@@ -43,7 +42,7 @@ def vae_loss(model, x, beta = 1):
     z = torch.distributions.Normal(mu, std).rsample()  # (*, z_dim)
     #
     #recon_loss = -1.0*likelihood(model.decoder(z), x).mean()  # x_recon vs x
-    recon_loss = nn.MSELoss()(model.decoder(z), x)
+    recon_loss = torch.square(model.decoder(z)-x).sum(dim=(1,2,3)).mean()
     kl_loss = kl_divergence(z, mu, std).mean()
     total_loss = recon_loss + beta*kl_loss
     return total_loss, OrderedDict(srecon_loss=recon_loss, kl_loss=kl_loss)
@@ -57,7 +56,7 @@ def linear_beta_scheduler(max_epochs=None, target_val = 1):
     """TODO 2.3.2 : Fill in helper. The value returned should increase linearly 
     from 0 at epoch 0 to target_val at epoch max_epochs """
     def _helper(epoch):
-        return torch.tensor((max_epochs-epoch)/max_epochs)
+        return torch.tensor(epoch/max_epochs)
     return _helper
 
 def run_train_epoch(model, loss_mode, train_loader, optimizer, beta = 1, grad_clip = 1):
@@ -96,7 +95,7 @@ def get_val_metrics(model, loss_mode, val_loader):
 def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, batch_size = 256, latent_size = 256,
          target_beta_val = 1, grad_clip=1, lr = 1e-3, eval_interval = 5):
 
-    os.makedirs('data/'+ log_dir, exist_ok = True)
+    os.makedirs('vae_data/'+ log_dir, exist_ok = True)
     train_loader, val_loader = get_dataloaders()
 
     variational = True if loss_mode == 'vae' else False
@@ -118,15 +117,15 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
         #TODO : add plotting code for metrics (required for multiple parts)
         for k, m in val_loss.items():
             val_loss[k].append(val_metrics[k])
-            save_plot(range(epoch+1), val_loss[k], k, 'epochs', f'{k} vs epochs', 'data/'+log_dir+'/epoch_'+str(epoch)+f'_{k}')
+            save_plot(range(epoch+1), val_loss[k], k, 'epochs', f'{k} vs epochs', 'vae_data/'+log_dir+f'/{k}_vs_epoch')
 
         if (epoch+1)%eval_interval == 0:
             print(epoch, train_metrics)
             print(epoch, val_metrics)
 
-            vis_recons(model, vis_x, 'data/'+log_dir+ '/epoch_'+str(epoch))
+            vis_recons(model, vis_x, 'vae_data/'+log_dir+ '/epoch_'+str(epoch))
             if loss_mode == 'vae':
-                vis_samples(model, 'data/'+log_dir+ '/epoch_'+str(epoch))
+                vis_samples(model, 'vae_data/'+log_dir+ '/epoch_'+str(epoch))
 
 
 if __name__ == '__main__':
@@ -139,7 +138,7 @@ if __name__ == '__main__':
         parser.add_argument('--num_epochs', dest='num_epochs', type=int,
                             default=20, help="Size of latent space")   # 'LunarLander-v2'
         parser.add_argument('--loss_mode', dest='loss_mode', type=str,
-                            default='ae', help="Size of latent space")   # 'LunarLander-v2'
+                            default='vae', help="Size of latent space")   # 'LunarLander-v2'
         parser.add_argument('--log_dir', dest='log_dir', type=str,
                             default='ae_latent1024', help="directory")
         # ['ae_latent1024','vae_latent1024', 'vae_latent1024_beta_constant0.8','vae_latent1024_beta_linear1']
@@ -154,7 +153,7 @@ if __name__ == '__main__':
     #TODO: Experiments to run : 
     #2.1 - Auto-Encoder
     #Run for latent_sizes 16, 128 and 1024
-    #main('ae_latent1024', loss_mode = 'ae',  num_epochs = 20, latent_size = 1024)
+    
     # args['loss_mode'] = 'ae'
     # exp_params = {
     #     "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
@@ -165,21 +164,29 @@ if __name__ == '__main__':
     #         args[p] = v[i]
     #     main(**args)  
     #Q 2.2 - Variational Auto-Encoder
-    #main('vae_latent1024', loss_mode = 'vae', num_epochs = 20, latent_size = 1024)
-    args['loss_mode'] = 'vae'
-    args['log_dir'] = 'vae_latent1024'
-    main(**args)  
+    
+    # args['loss_mode'] = 'vae'
+    # args['log_dir'] = 'vae_latent1024'
+    # main(**args)  
     #Q 2.3.1 - Beta-VAE (constant beta)
     #Run for beta values 0.8, 1.2
     #main('vae_latent1024_beta_constant0.8', loss_mode = 'vae', beta_mode = 'constant', target_beta_val = 0.8, num_epochs = 20, latent_size = 1024)
-    args['beta_mode'] = 'constant'
-    args['log_dir'] = 'vae_latent1024_beta_constant0.8'
-    main(**args)  
+    # args['beta_mode'] = 'constant'
+    # main(**args)  
+    # exp_params = {
+    #     "log_dir": ['vae_latent1024_beta_constant0.8','vae_latent1024_beta_constant1','vae_latent1024_beta_constant1.2'],
+    #     "target_beta_val": [0.8, 1, 1.2]
+    # }
+    # for i in range(3):
+    #     for p, v in exp_params.items():
+    #         args[p] = v[i]
+    #     main(**args)  
+    
     #Q 2.3.2 - VAE with annealed beta (linear schedule)
     # main(
     #     'vae_latent1024_beta_linear1', loss_mode = 'vae', beta_mode = 'linear', 
     #     target_beta_val = 1, num_epochs = 20, latent_size = 1024
     # )
     args['beta_mode'] = 'linear'
-    args['log_dir'] = 'vae_latent1024_beta_linear1.8'
+    args['log_dir'] = 'vae_latent1024_beta_linear1'
     main(**args)  

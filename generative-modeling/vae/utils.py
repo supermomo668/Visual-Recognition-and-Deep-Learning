@@ -16,27 +16,28 @@ def get_dataloaders(batch_size = 256):
     
     dataset_cls = datasets.CIFAR10 
     train_loader = torch.utils.data.DataLoader(
-        dataset_cls(root='data', train=True, transform=transforms.Compose([
+        dataset_cls(root='vae_data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
         ]), download=True),
         batch_size=batch_size, shuffle=True,
-        num_workers=4, pin_memory=True)
+        num_workers=1, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        dataset_cls(root='data', train=False, transform=transforms.Compose([
+        dataset_cls(root='vae_data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
         ])),
         batch_size=batch_size, shuffle=False,
-        num_workers=4, pin_memory=True)
+        num_workers=1, pin_memory=True)
 
     return train_loader, val_loader
 
 def save_plot(x, y, xlabel, ylabel, title, filename):
-    plt.plot(x, y)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
-    plt.savefig(filename + ".png")
+    fig, ax = plt.subplots(1)
+    ax.plot(x, y)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    fig.savefig(filename + ".png")
     
 def preprocess_data(x):
     x = 2*x - 1

@@ -16,16 +16,16 @@ if __name__ == "__main__":
     parser.add_argument('--ckpt', required=True, type=str, help="Pretrained checkpoint")
     parser.add_argument('--num-images', default=8, type=int, help="Number of images per iteration")
     parser.add_argument('--image-size', default=32, type=int, help="Image size to generate")
-    parser.add_argument('--sampling-method', choices=['ddpm', 'ddim'])
+    parser.add_argument('--sampling-method', default='ddpm', choices=['ddpm', 'ddim'])
     parser.add_argument('--ddim-timesteps', type=int, default=25, help="Number of timesteps to sample for DDIM")
     parser.add_argument('--ddim-eta', type=int, default=1, help="Eta for DDIM")
     args = parser.parse_args()
 
-    prefix = f"data_{args.sampling_method}/"
+    prefix = f"diffusion/data_{args.sampling_method}/"
     if not os.path.exists(prefix):
         os.makedirs(prefix)
     
-    sampling_timesteps = args.ddim_timesteps if args.sampling_method == "ddpm" else None
+    sampling_timesteps = args.ddim_timesteps if args.sampling_method == "ddim" else None
 
     model = Unet(
         dim=64,
@@ -50,4 +50,5 @@ if __name__ == "__main__":
         generated_samples = diffusion.ddpm_sample(img_shape)
     elif args.sampling_method == "ddim":
         generated_samples = diffusion.ddim_sample(img_shape)
+    print(f"Saving images to {prefix}/output.png. Samples size: {generated_samples.size()}")
     save_samples(generated_samples.cpu(), f"{prefix}/output.png", nrow=2)
