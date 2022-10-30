@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import numpy as np
 from utils import (
     cosine_beta_schedule,
     default,
@@ -27,15 +28,20 @@ class DiffusionModel(nn.Module):
         self.self_condition = self.model.self_condition
         self.device = torch.cuda.current_device()
 
+        self.num_timesteps = timesteps   #self.betas.shape[0]
+        if sampling_timesteps:
+            self.time_steps = np.asarray(list(range(1, self.num_timesteps, self.num_timesteps//sampling_timesteps))) + 1
+            print(self.time_steps.shape)
+        else:
+            self.time_steps = np.arange(timesteps)
+        
         self.betas = cosine_beta_schedule(timesteps).to(self.device)
-        self.num_timesteps = self.betas.shape[0]
-
         alphas = 1. - self.betas
         # TODO (Q3.1): compute the cummulative products for current and previous timesteps
         
         self.alphas_cumprod = torch.cumprod(alphas, axis=0)
         self.alphas_cumprod_prev = F.pad(self.alphas_cumprod[:-1], (1, 0), value=1.0)
-
+        
         # TODO (Q3.1): pre-compute the alphas needed for forward process
         # Hint: you should look at all the equations and see what you can pre-compute
         self.sqrt_recip_alphas = torch.sqrt(1.0 / alphas)
@@ -132,9 +138,12 @@ class DiffusionModel(nn.Module):
     def ddim_sample(self, shape):
         # TODO (Q3.2.1): implement the DDIM sampling process.
         # 'uniform':
+        print(f"Using ddim sampling:{len(range(0, self.num_timesteps, self.num_timesteps//self.sampling_timesteps))} time steps.")
         img = torch.randn(shape, device=torch.device(self.device))
-        time_steps = range(1, self.num_timesteps, self.num_timesteps//self.sampling_timesteps)
-        for t in time_steps[::-1]:
-            img, x_0 = self.predict_denoised_at_prev_timestep(img, torch.tensor(t).to(self.device))
+        #for t in range(0, self.num_timesteps, self.num_timesteps//self.ddim_sampling_eta)[::-1]:
+        for t in range(0, self.num_timesteps)[::-1]:
+            new_img, x_0 = self.predict_denoised_at_prev_timestep(img, torch.tensor(t).to(self.device))
+            if t %self.sampling_timesteps==0:
+                img = new_img
         img = unnormalize_to_zero_to_one(img)
         return img
