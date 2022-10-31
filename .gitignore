@@ -2,7 +2,10 @@ data/
 datasets/
 wandb/
 *.pkl
+<<<<<<< HEAD
 *.pth
+=======
+>>>>>>> 4e44da6e4777199e9ebd80afd62aa3d5b99d8d37
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
