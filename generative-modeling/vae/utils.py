@@ -16,14 +16,14 @@ def get_dataloaders(batch_size = 256):
     
     dataset_cls = datasets.CIFAR10 
     train_loader = torch.utils.data.DataLoader(
-        dataset_cls(root='vae_data', train=True, transform=transforms.Compose([
+        dataset_cls(root='vae/vae_data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
         ]), download=True),
         batch_size=batch_size, shuffle=True,
         num_workers=1, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        dataset_cls(root='vae_data', train=False, transform=transforms.Compose([
+        dataset_cls(root='vae/vae_data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
         ])),
         batch_size=batch_size, shuffle=False,

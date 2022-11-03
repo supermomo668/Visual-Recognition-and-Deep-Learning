@@ -43,7 +43,7 @@ def compute_generator_loss(discrim_fake):
 if __name__ == "__main__":
     gen = Generator().cuda().to(memory_format=torch.channels_last)
     disc = Discriminator().cuda().to(memory_format=torch.channels_last)
-    prefix = "data_wgan_gp/"
+    prefix = "gan/data_wgan_gp/"
     os.makedirs(prefix, exist_ok=True)
 
     # TODO 1.5.2: Run this line of code.

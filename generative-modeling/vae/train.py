@@ -95,7 +95,7 @@ def get_val_metrics(model, loss_mode, val_loader):
 def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, batch_size = 256, latent_size = 256,
          target_beta_val = 1, grad_clip=1, lr = 1e-3, eval_interval = 5):
 
-    os.makedirs('vae_data/'+ log_dir, exist_ok = True)
+    os.makedirs('vae/vae_data/'+ log_dir, exist_ok = True)
     train_loader, val_loader = get_dataloaders()
 
     variational = True if loss_mode == 'vae' else False
@@ -123,9 +123,9 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
             print(epoch, train_metrics)
             print(epoch, val_metrics)
 
-            vis_recons(model, vis_x, 'vae_data/'+log_dir+ '/epoch_'+str(epoch))
+            vis_recons(model, vis_x, 'vae/vae_data/'+log_dir+ '/epoch_'+str(epoch))
             if loss_mode == 'vae':
-                vis_samples(model, 'vae_data/'+log_dir+ '/epoch_'+str(epoch))
+                vis_samples(model, 'vae/vae_data/'+log_dir+ '/epoch_'+str(epoch))
 
 
 if __name__ == '__main__':
@@ -153,40 +153,34 @@ if __name__ == '__main__':
     #TODO: Experiments to run : 
     #2.1 - Auto-Encoder
     #Run for latent_sizes 16, 128 and 1024
-    
-    # args['loss_mode'] = 'ae'
-    # exp_params = {
-    #     "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
-    #     "latent_size": [16, 128, 1024]
-    # }
-    # for i in range(3):
-    #     for p, v in exp_params.items():
-    #         args[p] = v[i]
-    #     main(**args)  
+    args['loss_mode'] = 'ae'
+    exp_params = {
+        "log_dir": ['ae_latent16','ae_latent128','ae_latent1024'],
+        "latent_size": [16, 128, 1024]
+    }
+    for i in range(3):
+        for p, v in exp_params.items():
+            args[p] = v[i]
+        main(**args)  
     #Q 2.2 - Variational Auto-Encoder
     
-    # args['loss_mode'] = 'vae'
-    # args['log_dir'] = 'vae_latent1024'
-    # main(**args)  
+    args['loss_mode'] = 'vae'
+    args['log_dir'] = 'vae_latent1024'
+    main(**args)  
     #Q 2.3.1 - Beta-VAE (constant beta)
     #Run for beta values 0.8, 1.2
-    #main('vae_latent1024_beta_constant0.8', loss_mode = 'vae', beta_mode = 'constant', target_beta_val = 0.8, num_epochs = 20, latent_size = 1024)
-    # args['beta_mode'] = 'constant'
-    # main(**args)  
-    # exp_params = {
-    #     "log_dir": ['vae_latent1024_beta_constant0.8','vae_latent1024_beta_constant1','vae_latent1024_beta_constant1.2'],
-    #     "target_beta_val": [0.8, 1, 1.2]
-    # }
-    # for i in range(3):
-    #     for p, v in exp_params.items():
-    #         args[p] = v[i]
-    #     main(**args)  
+    args['beta_mode'] = 'constant'
+    main(**args)  
+    exp_params = {
+        "log_dir": ['vae_latent1024_beta_constant0.8','vae_latent1024_beta_constant1','vae_latent1024_beta_constant1.2'],
+        "target_beta_val": [0.8, 1, 1.2]
+    }
+    for i in range(3):
+        for p, v in exp_params.items():
+            args[p] = v[i]
+        main(**args)  
     
     #Q 2.3.2 - VAE with annealed beta (linear schedule)
-    # main(
-    #     'vae_latent1024_beta_linear1', loss_mode = 'vae', beta_mode = 'linear', 
-    #     target_beta_val = 1, num_epochs = 20, latent_size = 1024
-    # )
     args['beta_mode'] = 'linear'
     args['log_dir'] = 'vae_latent1024_beta_linear1'
     main(**args)  
