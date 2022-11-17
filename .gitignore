@@ -1,5 +1,11 @@
 data/
+models/
+runs/
+data/
 wandb/
+*.pt
+*.pth
+
 *.
 .
 *.pkl
