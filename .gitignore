@@ -1,7 +1,9 @@
 data/
 datasets/
+dataset/
 wandb/
 runs/
+*.ckpt
 *.pkl
 *.pth
 *.pt
